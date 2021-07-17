@@ -6,7 +6,7 @@ struct Player {
     class: String,
     skills: Vec<Skill>,
     statuses: Vec<Status>,
-    money: u32
+    money: u32,
 }
 
 #[derive(Debug)]
@@ -29,7 +29,7 @@ struct Status {
 
 // clear terminal and position the cursor at 0,0
 fn clear_screen() {
-        print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
+    print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
 }
 
 // returns true if the user asked to quit
@@ -37,7 +37,7 @@ fn handle_input<F: Fn(&str) -> bool>(handler: F) -> bool {
     let sin = std::io::stdin();
     let mut input = String::new();
     sin.read_line(&mut input).expect("Couldn't read stdin");
-    
+
     let input = input.trim();
     handler(input)
 }
@@ -48,19 +48,43 @@ fn print_player(player: &Player) {
 
     println!("Skills:");
     for skill in &player.skills {
-        println!("....Skill: {}, Available after: {} moves", skill.name, skill.available_after);
+        println!(
+            "....Skill: {}, Available after: {} moves",
+            skill.name, skill.available_after
+        );
     }
 
     println!("Statuses:");
     for status in &player.statuses {
-        println!("....Status: {:?}, Still active for {} moves", status.status_type, status.duration);
+        println!(
+            "....Status: {:?}, Still active for {} moves",
+            status.status_type, status.duration
+        );
     }
 
     println!("Money: {}", player.money);
 }
 
 pub fn run() {
-    let player = Player { name: String::from("Ciren"), class: String::from("Полу-человек полу-эльф"), skills: vec![ Skill { name: String::from("Test Skill 1"), available_after: 0 }, Skill { name: String::from("Test Skill 2"), available_after: 0 } ], statuses: vec![Status { status_type: StatusType::Luck, duration: 2 }], money: 50 };
+    let player = Player {
+        name: String::from("Ciren"),
+        class: String::from("Полу-человек полу-эльф"),
+        skills: vec![
+            Skill {
+                name: String::from("Test Skill 1"),
+                available_after: 0,
+            },
+            Skill {
+                name: String::from("Test Skill 2"),
+                available_after: 0,
+            },
+        ],
+        statuses: vec![Status {
+            status_type: StatusType::Luck,
+            duration: 2,
+        }],
+        money: 50,
+    };
     let players = Players(vec![player]);
     loop {
         clear_screen();
@@ -76,7 +100,9 @@ pub fn run() {
             }
 
             false
-        }) { break; }
+        }) {
+            break;
+        }
     }
 }
 
@@ -98,6 +124,8 @@ fn character_menu(players: Option<&Players>) {
             }
 
             false
-        }) { break; }
+        }) {
+            break;
+        }
     }
 }
