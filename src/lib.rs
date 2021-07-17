@@ -1,27 +1,41 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug)]
 struct Players(Vec<Player>);
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct Player {
     name: String,
     class: String,
+    stats: Stats,
     skills: Vec<Skill>,
     statuses: Vec<Status>,
     money: u32,
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
+struct Stats {
+    strength: u8,
+    dexterity: u8,
+    poise: u8,
+    wisdom: u8,
+    intelegence: u8,
+    charisma: u8,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 struct Skill {
     name: String,
     available_after: u8,
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 enum StatusType {
     Luck,
     Stun,
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct Status {
     status_type: StatusType,
     duration: u8,
@@ -66,26 +80,44 @@ fn print_player(player: &Player) {
 }
 
 pub fn run() {
-    let player = Player {
-        name: String::from("Ciren"),
-        class: String::from("Полу-человек полу-эльф"),
-        skills: vec![
-            Skill {
-                name: String::from("Test Skill 1"),
-                available_after: 0,
-            },
-            Skill {
-                name: String::from("Test Skill 2"),
-                available_after: 0,
-            },
-        ],
-        statuses: vec![Status {
-            status_type: StatusType::Luck,
-            duration: 2,
-        }],
-        money: 50,
-    };
-    let players = Players(vec![player]);
+    let mut players = Players { 0: vec![] };
+    let file_contents = std::fs::read_to_string("players.json");
+    match file_contents {
+        Ok(json) => {
+            players = serde_json::from_str(&json).expect("Not a valid json file players.json")
+        }
+        Err(err) => {
+            eprintln!("Couldn't read from file: {}", err);
+            players.0.push(Player {
+                name: String::from("Test Name"),
+                class: String::from("Test Class"),
+                stats: Stats {
+                    strength: 6,
+                    dexterity: 6,
+                    poise: 6,
+                    wisdom: 1,
+                    intelegence: 6,
+                    charisma: 6,
+                },
+                skills: vec![
+                    Skill {
+                        name: String::from("Test Skill 1"),
+                        available_after: 0,
+                    },
+                    Skill {
+                        name: String::from("Test Skill 2"),
+                        available_after: 0,
+                    },
+                ],
+                statuses: vec![Status {
+                    status_type: StatusType::Luck,
+                    duration: 2,
+                }],
+                money: 50,
+            })
+        }
+    }
+
     loop {
         clear_screen();
         println!("1. Start game");
@@ -104,6 +136,8 @@ pub fn run() {
             break;
         }
     }
+
+    std::fs::write("players.json", serde_json::to_string(&players).unwrap()).unwrap();
 }
 
 fn character_menu(players: Option<&Players>) {
