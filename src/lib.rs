@@ -32,6 +32,16 @@ fn clear_screen() {
         print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
 }
 
+// returns true if the user asked to quit
+fn handle_input<F: Fn(&str) -> bool>(handler: F) -> bool {
+    let sin = std::io::stdin();
+    let mut input = String::new();
+    sin.read_line(&mut input).expect("Couldn't read stdin");
+    
+    let input = input.trim();
+    handler(input)
+}
+
 fn print_player(player: &Player) {
     println!("Name: {}", player.name);
     println!("Class: {}", player.class);
@@ -58,16 +68,15 @@ pub fn run() {
         println!("2. View/Edit characters");
         println!("q. Quit");
 
-        let sin = std::io::stdin();
-        let mut input = String::new();
-        sin.read_line(&mut input).unwrap();
+        if handle_input(|input| {
+            match input {
+                "2" => character_menu(Some(&players)),
+                "q" => return true,
+                _ => (),
+            }
 
-        let input = input.trim();
-        match input {
-            "2" => character_menu(Some(&players)),
-            "q" => break,
-            _ => ()
-        }
+            false
+        }) { break; }
     }
 }
 
@@ -82,14 +91,13 @@ fn character_menu(players: Option<&Players>) {
             println!("There are no players.");
         }
 
-        let sin = std::io::stdin();
-        let mut input = String::new();
-        sin.read_line(&mut input).unwrap();
+        if handle_input(|input| {
+            match input {
+                "q" => return true,
+                _ => (),
+            }
 
-        let input = input.trim();
-        match input {
-            "q" => return,
-            _ => (),
-        }
+            false
+        }) { break; }
     }
 }
