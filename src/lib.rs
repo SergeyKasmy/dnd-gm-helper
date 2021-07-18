@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Write};
 
 type Players = Vec<Player>;
+type Skills = Vec<Skill>;
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct Player {
@@ -26,13 +27,15 @@ struct Stats {
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct Skill {
     name: String,
+    cooldown: u32,
     available_after: u32,
 }
 
 impl Skill {
-    fn new(name: String) -> Skill {
+    fn new(name: String, cooldown: u32) -> Skill {
         Skill {
             name,
+            cooldown,
             available_after: 0,
         }
     }
@@ -62,7 +65,7 @@ fn get_input() -> String {
         err(&format!("Couldn't read stdin. {}", er));
     }
 
-    input.trim().to_string()
+    input
 }
 
 // returns true if the user asked to quit
@@ -81,13 +84,73 @@ fn err(text: &str) {
     get_input();
 }
 
+fn game_start(players: &mut Players) {
+    loop {
+        for player in players.iter_mut() {
+            make_move(player);
+
+            loop {
+                clear_screen();
+                println!("Current move: {}", player.name);
+                print_player(&player, false);
+                println!("Use skill: \"s\", Add status: \"a\", Manage money: \"m\", Skip move: \" \", Quit game: \"q\"");
+                match get_input().as_str() {
+                    "s\n" => choose_skill_and_use(&mut player.skills),
+                    "a\n" => todo!(),
+                    "m\n" => todo!(),
+                    " \n" => break,
+                    "q\n" => return,
+                    _ => (),
+                }
+            }
+        }
+    }
+}
+
+fn use_skill(skill: &mut Skill) {
+    skill.available_after = skill.cooldown;
+}
+
+fn choose_skill_and_use(skills: &mut Skills) {
+    for (i, skill) in skills.iter_mut().enumerate() {
+        println!("#{}: {}", i + 1, skill.name);
+    }
+
+    loop {
+        let input = get_input();
+
+        // TODO: Handle unwrap
+        match skills.get_mut(input.trim().parse::<usize>().unwrap() - 1) {
+            Some(skill) => {
+                if skill.available_after == 0 {
+                    use_skill(skill);
+                } else {
+                    err("Skill still on cooldown");
+                }
+                break
+            }
+            None => err("Number out of bounds"),
+        }
+    }
+}
+
+fn make_move(player: &mut Player) {
+    for skill in &mut player.skills {
+        if skill.available_after > 0 { skill.available_after = skill.available_after - 1; }
+    }
+
+    for status in &mut player.statuses {
+        if status.duration > 0 { status.duration = status.duration - 1; }
+    }
+}
+
 fn edit_player(player: Option<Player>) -> Player {
     fn get_text(old_value: String, stat_name: &str) -> String {
         if !old_value.is_empty() {
             println!("Old {}: {}. Press enter to skip", stat_name, old_value);
         }
         print(&format!("{}: ", stat_name));
-        let input = get_input();
+        let input = get_input().trim().to_string();
         if !old_value.is_empty() && input.is_empty() {
             return old_value;
         }
@@ -100,7 +163,7 @@ fn edit_player(player: Option<Player>) -> Player {
                 println!("Old {}: {}. Press enter to skip", stat_name, old_value);
             }
             print(&format!("{}: ", stat_name));
-            let input = get_input();
+            let input = get_input().trim().to_string();
             if old_value != 0 && input.is_empty() {
                 return old_value;
             }
@@ -129,10 +192,12 @@ fn edit_player(player: Option<Player>) -> Player {
     if !player.skills.is_empty() {
         for (i, skill) in player.skills.iter_mut().enumerate() {
             skill.name = get_text(skill.name.clone(), &format!("Skill #{}", i));
-            print("Reset CD? ");
+            // TODO: parse i64 to u32 correctly
+            skill.cooldown = get_stat_num(skill.cooldown as i64, "Cooldown") as u32;
+            print("Reset existing cooldown to 0? ");
             let answer = get_input();
             match answer.as_str() {
-                "y" | "yes" => skill.available_after = 0,
+                "y\n" | "yes\n" => skill.available_after = 0,
                 _ => (),
             }
         }
@@ -141,13 +206,16 @@ fn edit_player(player: Option<Player>) -> Player {
     print("Add new skills? ");
     let answer = get_input();
     match answer.as_str() {
-        "y" | "yes" => loop {
+        "y\n" | "yes\n" => loop {
             print("Skill name (enter \"q\" to quit): ");
-            let input = get_input();
-            if input == "q" {
+            let name = get_input().trim().to_string();
+            if name == "q" {
                 break;
             }
-            player.skills.push(Skill::new(input));
+            print("Skill cooldown: ");
+            // TODO: Remove unwrap
+            let cd = get_input().trim().parse::<u32>().unwrap();
+            player.skills.push(Skill::new(name, cd));
         },
         _ => (),
     }
@@ -156,9 +224,9 @@ fn edit_player(player: Option<Player>) -> Player {
     player
 }
 
-fn print_player(player: &Player) {
+fn print_player(player: &Player, verbose: bool) {
     println!("Name: {}", player.name);
-    println!("Class: {}", player.class);
+    if verbose { println!("Class: {}", player.class); }
 
     println!("Stats:");
     println!("....Strength: {}", player.stats.strength);
@@ -171,8 +239,8 @@ fn print_player(player: &Player) {
     println!("Skills:");
     for skill in &player.skills {
         println!(
-            "....{}. Available after {} moves",
-            skill.name, skill.available_after
+            "....{}. CD: {}. Available after {} moves",
+            skill.name, skill.cooldown, skill.available_after
         );
     }
 
@@ -220,7 +288,8 @@ pub fn run() {
         println!("q. Quit");
 
         if handle_input(|input| {
-            match input {
+            match input.trim() {
+                "1" => game_start(&mut players),
                 "2" => character_menu(&mut players),
                 "q" => return true,
                 _ => (),
@@ -242,21 +311,21 @@ fn character_menu(players: &mut Players) {
             for (i, player) in players.iter().enumerate() {
                 let i = i + 1;
                 println!("#{}", i);
-                print_player(&player);
+                print_player(&player, true);
                 println!("-------------------------------------------------");
             }
         } else {
             println!("There are no players.");
         }
-        println!("Enter \"e\" to edit, \"d\" to delete, \"a\" to add, and \"q\" to go back");
+        println!("Edit: \"e\", Delete: \"d\", Add: \"a\", Go back: \"q\"");
 
         if handle_input(|input| {
-            match input {
+            match input.trim() {
                 "a" => {
                     players.push(edit_player(None));
                 }
                 "d" => {
-                    if let Ok(num) = get_input().parse::<i32>() {
+                    if let Ok(num) = get_input().trim().parse::<i32>() {
                         let num = num - 1;
                         if num < 0 || num as usize >= players.len() {
                             err(&format!("{} is out of bounds", num + 1));
@@ -266,7 +335,7 @@ fn character_menu(players: &mut Players) {
                     }
                 }
                 "e" => {
-                    if let Ok(num) = get_input().parse::<i32>() {
+                    if let Ok(num) = get_input().trim().parse::<i32>() {
                         let num = num - 1;
                         if num < 0 || num as usize >= players.len() {
                             err(&format!("{} is out of bounds", num + 1));
