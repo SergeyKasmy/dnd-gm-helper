@@ -83,7 +83,9 @@ fn err(text: &str) {
 
 fn edit_player(player: Option<Player>) -> Player {
     fn get_text(old_value: String, stat_name: &str) -> String {
-        if !old_value.is_empty() { println!("Old {}: {}. Press enter to skip", stat_name, old_value); }
+        if !old_value.is_empty() {
+            println!("Old {}: {}. Press enter to skip", stat_name, old_value);
+        }
         print(&format!("{}: ", stat_name));
         let input = get_input();
         if !old_value.is_empty() && input.is_empty() {
@@ -94,7 +96,9 @@ fn edit_player(player: Option<Player>) -> Player {
 
     fn get_stat_num(old_value: i64, stat_name: &str) -> i64 {
         loop {
-            if old_value != 0 { println!("Old {}: {}. Press enter to skip", stat_name, old_value); }
+            if old_value != 0 {
+                println!("Old {}: {}. Press enter to skip", stat_name, old_value);
+            }
             print(&format!("{}: ", stat_name));
             let input = get_input();
             if old_value != 0 && input.is_empty() {
@@ -138,13 +142,13 @@ fn edit_player(player: Option<Player>) -> Player {
     let answer = get_input();
     match answer.as_str() {
         "y" | "yes" => loop {
-                print("Skill name (enter \"q\" to quit): ");
-                let input = get_input();
-                if input == "q" {
-                    break;
-                }
-                player.skills.push(Skill::new(input));
+            print("Skill name (enter \"q\" to quit): ");
+            let input = get_input();
+            if input == "q" {
+                break;
             }
+            player.skills.push(Skill::new(input));
+        },
         _ => (),
     }
 
@@ -192,6 +196,17 @@ pub fn run() {
                 Ok(data) => players = data,
                 Err(er) => {
                     err(&format!("players.json is not a valid json file. {}", er));
+                    std::fs::copy(
+                        "players.json",
+                        format!(
+                            "players.json.bak-{}",
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs()
+                        ),
+                    )
+                    .unwrap();
                 }
             };
         }
@@ -249,7 +264,6 @@ fn character_menu(players: &mut Players) {
                         }
                         players.remove(num as usize);
                     }
-
                 }
                 "e" => {
                     if let Ok(num) = get_input().parse::<i32>() {
@@ -262,10 +276,9 @@ fn character_menu(players: &mut Players) {
                         let player_to_edit = players.remove(num);
                         players.insert(num, edit_player(Some(player_to_edit)));
                     }
-
                 }
                 "q" => return true,
-                _ => ()
+                _ => (),
             }
 
             false
