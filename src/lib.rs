@@ -1,5 +1,5 @@
-use std::io::{self, Write};
 use serde::{Deserialize, Serialize};
+use std::io::{self, Write};
 
 type Players = Vec<Player>;
 
@@ -10,23 +10,23 @@ struct Player {
     stats: Stats,
     skills: Vec<Skill>,
     statuses: Vec<Status>,
-    money: u32,
+    money: i64,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct Stats {
-    strength: u8,
-    dexterity: u8,
-    poise: u8,
-    wisdom: u8,
-    intelligence: u8,
-    charisma: u8,
+    strength: i64,
+    dexterity: i64,
+    poise: i64,
+    wisdom: i64,
+    intelligence: i64,
+    charisma: i64,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct Skill {
     name: String,
-    available_after: u8,
+    available_after: u32,
 }
 
 impl Skill {
@@ -47,7 +47,7 @@ enum StatusType {
 #[derive(Serialize, Deserialize, Debug)]
 struct Status {
     status_type: StatusType,
-    duration: u8,
+    duration: u32,
 }
 
 // clear terminal and position the cursor at 0,0
@@ -58,7 +58,9 @@ fn clear_screen() {
 fn get_input() -> String {
     let sin = io::stdin();
     let mut input = String::new();
-    sin.read_line(&mut input).expect("Couldn't read stdin");
+    if let Err(er) = sin.read_line(&mut input) {
+        err(&format!("Couldn't read stdin. {}", er));
+    }
 
     input.trim().to_string()
 }
@@ -74,40 +76,79 @@ fn print(text: &str) {
     sout.flush().unwrap();
 }
 
-fn add_player() -> Player {
-    let mut player: Player = Default::default();
-    println!("{:?}", player);
+fn err(text: &str) {
+    eprintln!("{}", text);
+    get_input();
+}
 
-    print("Name: ");
-    player.name = get_input();
-
-    print("Class: ");
-    player.class = get_input();
-
-    println!("Stats:");
-    print("....Strength: ");
-    player.stats.strength = get_input().parse().unwrap();
-    print("....Dexterity: ");
-    player.stats.dexterity = get_input().parse().unwrap();
-    print("....Poise: ");
-    player.stats.poise = get_input().parse().unwrap();
-    print("....Wisdom: ");
-    player.stats.wisdom = get_input().parse().unwrap();
-    print("....Intelligence: ");
-    player.stats.intelligence = get_input().parse().unwrap();
-    print("....Charisma: ");
-    player.stats.charisma = get_input().parse().unwrap();
-
-    loop {
-        print("Skill name(enter \"q\" to skip): ");
+fn edit_player(player: Option<Player>) -> Player {
+    fn get_text(old_value: String, stat_name: &str) -> String {
+        if !old_value.is_empty() { println!("Old {}: {}. Press enter to skip", stat_name, old_value); }
+        print(&format!("{}: ", stat_name));
         let input = get_input();
-        if input == "q" { break; }
-        player.skills.push(Skill::new(input));
+        if !old_value.is_empty() && input.is_empty() {
+            return old_value;
+        }
+        input
     }
 
-    print("Money: ");
-    player.money = get_input().parse().unwrap();
+    fn get_stat_num(old_value: i64, stat_name: &str) -> i64 {
+        loop {
+            if old_value != 0 { println!("Old {}: {}. Press enter to skip", stat_name, old_value); }
+            print(&format!("{}: ", stat_name));
+            let input = get_input();
+            if old_value != 0 && input.is_empty() {
+                return old_value;
+            }
+            match input.parse() {
+                Ok(num) => return num,
+                Err(_) => eprintln!("Not a valid number"),
+            }
+        }
+    }
 
+    //let mut player: Player = Default::default();
+    let mut player: Player = player.unwrap_or_default();
+
+    player.name = get_text(player.name, "Name");
+    player.class = get_text(player.class, "Class");
+
+    println!("Stats:");
+    player.stats.strength = get_stat_num(player.stats.strength, "Strength");
+    player.stats.dexterity = get_stat_num(player.stats.dexterity, "Dexterity");
+    player.stats.poise = get_stat_num(player.stats.poise, "Poise");
+    player.stats.wisdom = get_stat_num(player.stats.wisdom, "Wisdom");
+    player.stats.intelligence = get_stat_num(player.stats.intelligence, "Intelligence");
+    player.stats.charisma = get_stat_num(player.stats.charisma, "Charisma");
+
+    // edit the existing skills first
+    if !player.skills.is_empty() {
+        for (i, skill) in player.skills.iter_mut().enumerate() {
+            skill.name = get_text(skill.name.clone(), &format!("Skill #{}", i));
+            print("Reset CD? ");
+            let answer = get_input();
+            match answer.as_str() {
+                "y" | "yes" => skill.available_after = 0,
+                _ => (),
+            }
+        }
+    }
+
+    print("Add new skills? ");
+    let answer = get_input();
+    match answer.as_str() {
+        "y" | "yes" => loop {
+                print("Skill name (enter \"q\" to quit): ");
+                let input = get_input();
+                if input == "q" {
+                    break;
+                }
+                player.skills.push(Skill::new(input));
+            }
+        _ => (),
+    }
+
+    player.money = get_stat_num(player.money, "Money");
     player
 }
 
@@ -126,7 +167,7 @@ fn print_player(player: &Player) {
     println!("Skills:");
     for skill in &player.skills {
         println!(
-            "....Skill: {}, Available after: {} moves",
+            "....{}. Available after {} moves",
             skill.name, skill.available_after
         );
     }
@@ -147,38 +188,14 @@ pub fn run() {
     let file_contents = std::fs::read_to_string("players.json");
     match file_contents {
         Ok(json) => {
-            players = serde_json::from_str(&json).expect("Not a valid json file players.json")
+            match serde_json::from_str(&json) {
+                Ok(data) => players = data,
+                Err(er) => {
+                    err(&format!("players.json is not a valid json file. {}", er));
+                }
+            };
         }
-        Err(err) => {
-            eprintln!("Couldn't read from file: {}", err);
-            players.push(Player {
-                name: String::from("Test Name"),
-                class: String::from("Test Class"),
-                stats: Stats {
-                    strength: 6,
-                    dexterity: 6,
-                    poise: 6,
-                    wisdom: 1,
-                    intelligence: 6,
-                    charisma: 6,
-                },
-                skills: vec![
-                    Skill {
-                        name: String::from("Test Skill 1"),
-                        available_after: 0,
-                    },
-                    Skill {
-                        name: String::from("Test Skill 2"),
-                        available_after: 0,
-                    },
-                ],
-                statuses: vec![Status {
-                    status_type: StatusType::Luck,
-                    duration: 2,
-                }],
-                money: 50,
-            })
-        }
+        Err(er) => err(&format!("Couldn't read from file: {}", er)),
     }
 
     loop {
@@ -207,21 +224,48 @@ fn character_menu(players: &mut Players) {
     loop {
         clear_screen();
         if !players.is_empty() {
-            for player in players.iter() {
+            for (i, player) in players.iter().enumerate() {
+                let i = i + 1;
+                println!("#{}", i);
                 print_player(&player);
+                println!("-------------------------------------------------");
             }
         } else {
             println!("There are no players.");
         }
-        println!("\na. Add a new player");
+        println!("Enter \"e\" to edit, \"d\" to delete, \"a\" to add, and \"q\" to go back");
 
         if handle_input(|input| {
             match input {
                 "a" => {
-                    players.push(add_player());
+                    players.push(edit_player(None));
+                }
+                "d" => {
+                    if let Ok(num) = get_input().parse::<i32>() {
+                        let num = num - 1;
+                        if num < 0 || num as usize >= players.len() {
+                            err(&format!("{} is out of bounds", num + 1));
+                            return false;
+                        }
+                        players.remove(num as usize);
+                    }
+
+                }
+                "e" => {
+                    if let Ok(num) = get_input().parse::<i32>() {
+                        let num = num - 1;
+                        if num < 0 || num as usize >= players.len() {
+                            err(&format!("{} is out of bounds", num + 1));
+                            return false;
+                        }
+                        let num = num as usize;
+                        let player_to_edit = players.remove(num);
+                        players.insert(num, edit_player(Some(player_to_edit)));
+                    }
+
                 }
                 "q" => return true,
-                _ => (),
+                _ => ()
             }
 
             false
