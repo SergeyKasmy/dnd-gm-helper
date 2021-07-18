@@ -1,8 +1,9 @@
-use serde::{Deserialize, Serialize};
 use std::io::{self, Write};
+use serde::{Deserialize, Serialize};
 
 type Players = Vec<Player>;
 type Skills = Vec<Skill>;
+type Statuses = Vec<Status>;
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct Player {
@@ -41,16 +42,34 @@ impl Skill {
     }
 }
 
+
 #[derive(Serialize, Deserialize, Debug)]
 enum StatusType {
+    Discharge,
+    FireAttack,
+    FireShield,
+    IceShield,
+    Blizzard,
+    Fusion,
     Luck,
+
+    Knockdown,
+    Poison,
     Stun,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Status {
     status_type: StatusType,
+    status_cooldown_type: StatusCooldownType,
     duration: u32,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+enum StatusCooldownType {
+    Normal,
+    Attacking,
+    Attacked,
 }
 
 // clear terminal and position the cursor at 0,0
@@ -87,19 +106,25 @@ fn err(text: &str) {
 fn game_start(players: &mut Players) {
     loop {
         for player in players.iter_mut() {
-            make_move(player);
 
             loop {
                 clear_screen();
-                println!("Current move: {}", player.name);
                 print_player(&player, false);
-                println!("Use skill: \"s\", Add status: \"a\", Manage money: \"m\", Skip move: \" \", Quit game: \"q\"");
+                println!("Use skill: \"s\", Add status: \"a\", Drain status after attacking: \"b\", after getting attacked: \"n\", Manage money: \"m\", Next move: \" \", Skip move: \"p\", Quit game: \"q\"");
                 match get_input().as_str() {
-                    "s\n" => choose_skill_and_use(&mut player.skills),
-                    "a\n" => todo!(),
-                    "m\n" => todo!(),
-                    " \n" => break,
-                    "q\n" => return,
+                    "s\n" | "s\r\n" => choose_skill_and_use(&mut player.skills),
+                    "a\n" | "a\r\n" => add_status(&mut player.statuses),
+                    "b\n" | "b\r\n" => drain_status(player, StatusCooldownType::Attacking),
+                    "n\n" | "n\r\n" => drain_status(player, StatusCooldownType::Attacked),
+                    "m\n" | "m\r\n" => manage_money(player),
+                    "c\n" | "c\r\n" => player.statuses.clear(),
+                    " \n" | " \r\n" => 
+                    {
+                        make_move(player);
+                        break;
+                    }
+                    "p\n" | "p\r\n" => break,
+                    "q\n" | "q\r\n" => return,
                     _ => (),
                 }
             }
@@ -111,6 +136,25 @@ fn use_skill(skill: &mut Skill) {
     skill.available_after = skill.cooldown;
 }
 
+fn drain_status(player: &mut Player, status_type: StatusCooldownType) {
+    for status in player.statuses.iter_mut() {
+        if status.status_cooldown_type == status_type {
+            if status.duration > 0 {
+                status.duration = status.duration - 1;
+            }
+        }
+    }
+
+    let mut i = 0;
+    while i < player.statuses.len() {
+        if player.statuses[i].duration <= 0 {
+            player.statuses.remove(i);
+        } else {
+            i += 1;
+        }
+    }
+}
+
 fn choose_skill_and_use(skills: &mut Skills) {
     for (i, skill) in skills.iter_mut().enumerate() {
         println!("#{}: {}", i + 1, skill.name);
@@ -118,9 +162,15 @@ fn choose_skill_and_use(skills: &mut Skills) {
 
     loop {
         let input = get_input();
+        let input: usize = loop { 
+            match input.trim().parse() {
+                Ok(num) => break num,
+                Err(_) => err("Not a valid number"),
+            }
+        };
 
         // TODO: Handle unwrap
-        match skills.get_mut(input.trim().parse::<usize>().unwrap() - 1) {
+        match skills.get_mut(input - 1) {
             Some(skill) => {
                 if skill.available_after == 0 {
                     use_skill(skill);
@@ -140,8 +190,114 @@ fn make_move(player: &mut Player) {
     }
 
     for status in &mut player.statuses {
-        if status.duration > 0 { status.duration = status.duration - 1; }
+        if status.status_cooldown_type == StatusCooldownType::Normal && status.duration > 0 { status.duration = status.duration - 1; }
     }
+
+    let mut i = 0;
+    while i < player.statuses.len() {
+        if player.statuses[i].duration <= 0 {
+            player.statuses.remove(i);
+        } else {
+            i += 1;
+        }
+    }
+}
+
+fn add_status(statuses: &mut Statuses) {
+    println!("Choose a status:");
+    println!("Buffs:");
+    println!("#1 Discharge");
+    println!("#2 Fire Attack");
+    println!("#3 Fire Shield");
+    println!("#4 Ice Shield");
+    println!("#5 Blizzard");
+    println!("#6 Fusion");
+    println!("#7 Luck");
+    println!("Debuffs:");
+    println!("#8 Knockdown");
+    println!("#9 Poison");
+    println!("#0 Stun");
+
+    let status_type = loop {
+        match get_input().trim() {
+            "1" => break StatusType::Discharge,
+            "2" => break StatusType::FireAttack,
+            "3" => break StatusType::FireShield,
+            "4" => break StatusType::IceShield,
+            "5" => break StatusType::Blizzard,
+            "6" => break StatusType::Fusion,
+            "7" => break StatusType::Luck,
+            "8" => break StatusType::Knockdown,
+            "9" => break StatusType::Poison,
+            "0" => break StatusType::Stun,
+            "q" => return,
+            _ => continue,
+        };
+    };
+
+    print("Status cooldown type (1 for normal, 2 for on getting attacked, 3 for attacking): ");
+    let status_cooldown_type = loop {
+        match get_input().trim().parse::<u8>() {
+            Ok(num) => break num,
+            Err(_) => err("Not a valid number"),
+        }
+    };
+
+    let status_cooldown_type = match status_cooldown_type {
+        1 => StatusCooldownType::Normal,
+        2 => StatusCooldownType::Attacked,
+        3 => StatusCooldownType::Attacking,
+        _ => {
+            err("Not a valid cooldown type");
+            return;
+        }
+    };
+
+    print("Enter status duration: ");
+    let duration = loop {
+        match get_input().trim().parse::<u32>() {
+            Ok(num) => break num,
+            Err(_) => eprintln!("Number out of bounds"),
+        }
+    };
+
+    statuses.push(Status { status_type, status_cooldown_type, duration })
+}
+
+fn manage_money(player: &mut Player) {
+    print("Add or remove money (use + or - before the amount): ");
+    let input = get_input().trim().to_string();
+
+    if input.len() < 2 {
+        err(&format!("{} is not a valid input. Good examples: +500, -69", input));
+        return;
+    }
+
+    let mut op = '.';
+    let mut amount = String::new();
+
+    for (i, ch) in input.chars().enumerate() {
+        if i == 0 { op = ch; } else {
+            amount.push(ch);
+        }
+    }
+
+    let amount: i64 = match amount.parse() {
+        Ok(num) => num,
+        Err(_) => {
+            err("Not a valid number");
+            return
+        }
+    };
+
+    player.money = match op {
+        '+' => player.money + amount,
+        '-' => player.money - amount,
+        _ => {
+            err(&format!("{} is not a valid operator (+ or -)", op));
+            return;
+        },
+    } 
 }
 
 fn edit_player(player: Option<Player>) -> Player {
@@ -196,8 +352,8 @@ fn edit_player(player: Option<Player>) -> Player {
             skill.cooldown = get_stat_num(skill.cooldown as i64, "Cooldown") as u32;
             print("Reset existing cooldown to 0? ");
             let answer = get_input();
-            match answer.as_str() {
-                "y\n" | "yes\n" => skill.available_after = 0,
+            match answer.trim() {
+                "y" | "yes" => skill.available_after = 0,
                 _ => (),
             }
         }
@@ -205,16 +361,20 @@ fn edit_player(player: Option<Player>) -> Player {
 
     print("Add new skills? ");
     let answer = get_input();
-    match answer.as_str() {
-        "y\n" | "yes\n" => loop {
+    match answer.trim() {
+        "y" | "yes" => loop {
             print("Skill name (enter \"q\" to quit): ");
             let name = get_input().trim().to_string();
             if name == "q" {
                 break;
             }
             print("Skill cooldown: ");
-            // TODO: Remove unwrap
-            let cd = get_input().trim().parse::<u32>().unwrap();
+            let cd = loop {
+                match get_input().trim().parse::<u32>() {
+                    Ok(num) => break num,
+                    Err(_) => err("Not a valid number"),
+                };
+            };
             player.skills.push(Skill::new(name, cd));
         },
         _ => (),
@@ -247,7 +407,7 @@ fn print_player(player: &Player, verbose: bool) {
     println!("Statuses:");
     for status in &player.statuses {
         println!(
-            "....Status: {:?}, Still active for {} moves",
+            "....{:?}, Still active for {} moves",
             status.status_type, status.duration
         );
     }
