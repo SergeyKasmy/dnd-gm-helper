@@ -1,15 +1,15 @@
 mod term;
 
-use term::{Tui, MainMenuButton};
-use std::io::{self, Write};
+use term::{Tui, MainMenuAction, CharacterMenuAction};
 use serde::{Deserialize, Serialize};
+use std::io::{self, Write};
 
 type Players = Vec<Player>;
 type Skills = Vec<Skill>;
 type Statuses = Vec<Status>;
 
 #[derive(Serialize, Deserialize, Default, Debug)]
-struct Player {
+pub struct Player {
     name: String,
     class: String,
     stats: Stats,
@@ -45,7 +45,6 @@ impl Skill {
     }
 }
 
-
 #[derive(Serialize, Deserialize, Debug)]
 enum StatusType {
     Discharge,
@@ -75,41 +74,21 @@ enum StatusCooldownType {
     Attacked,
 }
 
-// clear terminal and position the cursor at 0,0
-fn clear_screen() {
-    print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
-}
-
 fn get_input() -> String {
-    let sin = io::stdin();
-    let mut input = String::new();
-    if let Err(er) = sin.read_line(&mut input) {
-        err(&format!("Couldn't read stdin. {}", er));
-    }
-
-    input
+    unimplemented!();
 }
 
-// returns true if the user asked to quit
-fn handle_input<F: FnMut(&str) -> bool>(mut handler: F) -> bool {
-    handler(&get_input())
+fn clear_screen() {
+    unimplemented!();
 }
 
-fn print(text: &str) {
-    let mut sout = io::stdout();
-    print!("{}", text);
-    sout.flush().unwrap();
-}
-
-fn err(text: &str) {
-    eprintln!("{}", text);
-    get_input();
+fn print(_text: &str) {
+    unimplemented!();
 }
 
 fn game_start(players: &mut Players) {
     loop {
         for player in players.iter_mut() {
-
             loop {
                 clear_screen();
                 print_player(&player, false);
@@ -121,8 +100,7 @@ fn game_start(players: &mut Players) {
                     "n\n" | "n\r\n" => drain_status(player, StatusCooldownType::Attacked),
                     "m\n" | "m\r\n" => manage_money(player),
                     "c\n" | "c\r\n" => player.statuses.clear(),
-                    " \n" | " \r\n" => 
-                    {
+                    " \n" | " \r\n" => {
                         make_move(player);
                         break;
                     }
@@ -165,10 +143,10 @@ fn choose_skill_and_use(skills: &mut Skills) {
 
     loop {
         let input = get_input();
-        let input: usize = loop { 
+        let input: usize = loop {
             match input.trim().parse() {
                 Ok(num) => break num,
-                Err(_) => err("Not a valid number"),
+                Err(_) => Tui::err("Not a valid number"),
             }
         };
 
@@ -178,22 +156,26 @@ fn choose_skill_and_use(skills: &mut Skills) {
                 if skill.available_after == 0 {
                     use_skill(skill);
                 } else {
-                    err("Skill still on cooldown");
+                    Tui::err("Skill still on cooldown");
                 }
-                break
+                break;
             }
-            None => err("Number out of bounds"),
+            None => Tui::err("Number out of bounds"),
         }
     }
 }
 
 fn make_move(player: &mut Player) {
     for skill in &mut player.skills {
-        if skill.available_after > 0 { skill.available_after = skill.available_after - 1; }
+        if skill.available_after > 0 {
+            skill.available_after = skill.available_after - 1;
+        }
     }
 
     for status in &mut player.statuses {
-        if status.status_cooldown_type == StatusCooldownType::Normal && status.duration > 0 { status.duration = status.duration - 1; }
+        if status.status_cooldown_type == StatusCooldownType::Normal && status.duration > 0 {
+            status.duration = status.duration - 1;
+        }
     }
 
     let mut i = 0;
@@ -242,7 +224,7 @@ fn add_status(statuses: &mut Statuses) {
     let status_cooldown_type = loop {
         match get_input().trim().parse::<u8>() {
             Ok(num) => break num,
-            Err(_) => err("Not a valid number"),
+            Err(_) => Tui::err("Not a valid number"),
         }
     };
 
@@ -251,7 +233,7 @@ fn add_status(statuses: &mut Statuses) {
         2 => StatusCooldownType::Attacked,
         3 => StatusCooldownType::Attacking,
         _ => {
-            err("Not a valid cooldown type");
+            Tui::err("Not a valid cooldown type");
             return;
         }
     };
@@ -264,7 +246,11 @@ fn add_status(statuses: &mut Statuses) {
         }
     };
 
-    statuses.push(Status { status_type, status_cooldown_type, duration })
+    statuses.push(Status {
+        status_type,
+        status_cooldown_type,
+        duration,
+    })
 }
 
 fn manage_money(player: &mut Player) {
@@ -272,7 +258,10 @@ fn manage_money(player: &mut Player) {
     let input = get_input().trim().to_string();
 
     if input.len() < 2 {
-        err(&format!("{} is not a valid input. Good examples: +500, -69", input));
+        Tui::err(&format!(
+            "{} is not a valid input. Good examples: +500, -69",
+            input
+        ));
         return;
     }
 
@@ -280,7 +269,9 @@ fn manage_money(player: &mut Player) {
     let mut amount = String::new();
 
     for (i, ch) in input.chars().enumerate() {
-        if i == 0 { op = ch; } else {
+        if i == 0 {
+            op = ch;
+        } else {
             amount.push(ch);
         }
     }
@@ -288,8 +279,8 @@ fn manage_money(player: &mut Player) {
     let amount: i64 = match amount.parse() {
         Ok(num) => num,
         Err(_) => {
-            err("Not a valid number");
-            return
+            Tui::err("Not a valid number");
+            return;
         }
     };
 
@@ -297,99 +288,18 @@ fn manage_money(player: &mut Player) {
         '+' => player.money + amount,
         '-' => player.money - amount,
         _ => {
-            err(&format!("{} is not a valid operator (+ or -)", op));
+            Tui::err(&format!("{} is not a valid operator (+ or -)", op));
             return;
-        },
-    } 
+        }
+    }
 }
 
-fn edit_player(player: Option<Player>) -> Player {
-    fn get_text(old_value: String, stat_name: &str) -> String {
-        if !old_value.is_empty() {
-            println!("Old {}: {}. Press enter to skip", stat_name, old_value);
-        }
-        print(&format!("{}: ", stat_name));
-        let input = get_input().trim().to_string();
-        if !old_value.is_empty() && input.is_empty() {
-            return old_value;
-        }
-        input
-    }
-
-    fn get_stat_num(old_value: i64, stat_name: &str) -> i64 {
-        loop {
-            if old_value != 0 {
-                println!("Old {}: {}. Press enter to skip", stat_name, old_value);
-            }
-            print(&format!("{}: ", stat_name));
-            let input = get_input().trim().to_string();
-            if old_value != 0 && input.is_empty() {
-                return old_value;
-            }
-            match input.parse() {
-                Ok(num) => return num,
-                Err(_) => eprintln!("Not a valid number"),
-            }
-        }
-    }
-
-    //let mut player: Player = Default::default();
-    let mut player: Player = player.unwrap_or_default();
-
-    player.name = get_text(player.name, "Name");
-    player.class = get_text(player.class, "Class");
-
-    println!("Stats:");
-    player.stats.strength = get_stat_num(player.stats.strength, "Strength");
-    player.stats.dexterity = get_stat_num(player.stats.dexterity, "Dexterity");
-    player.stats.poise = get_stat_num(player.stats.poise, "Poise");
-    player.stats.wisdom = get_stat_num(player.stats.wisdom, "Wisdom");
-    player.stats.intelligence = get_stat_num(player.stats.intelligence, "Intelligence");
-    player.stats.charisma = get_stat_num(player.stats.charisma, "Charisma");
-
-    // edit the existing skills first
-    if !player.skills.is_empty() {
-        for (i, skill) in player.skills.iter_mut().enumerate() {
-            skill.name = get_text(skill.name.clone(), &format!("Skill #{}", i));
-            // TODO: parse i64 to u32 correctly
-            skill.cooldown = get_stat_num(skill.cooldown as i64, "Cooldown") as u32;
-            print("Reset existing cooldown to 0? ");
-            let answer = get_input();
-            match answer.trim() {
-                "y" | "yes" => skill.available_after = 0,
-                _ => (),
-            }
-        }
-    }
-
-    print("Add new skills? ");
-    let answer = get_input();
-    match answer.trim() {
-        "y" | "yes" => loop {
-            print("Skill name (enter \"q\" to quit): ");
-            let name = get_input().trim().to_string();
-            if name == "q" {
-                break;
-            }
-            print("Skill cooldown: ");
-            let cd = loop {
-                match get_input().trim().parse::<u32>() {
-                    Ok(num) => break num,
-                    Err(_) => err("Not a valid number"),
-                };
-            };
-            player.skills.push(Skill::new(name, cd));
-        },
-        _ => (),
-    }
-
-    player.money = get_stat_num(player.money, "Money");
-    player
-}
 
 fn print_player(player: &Player, verbose: bool) {
     println!("Name: {}", player.name);
-    if verbose { println!("Class: {}", player.class); }
+    if verbose {
+        println!("Class: {}", player.class);
+    }
 
     println!("Stats:");
     println!("....Strength: {}", player.stats.strength);
@@ -426,7 +336,7 @@ pub fn run() {
             match serde_json::from_str(&json) {
                 Ok(data) => players = data,
                 Err(er) => {
-                    err(&format!("players.json is not a valid json file. {}", er));
+                    Tui::err(&format!("players.json is not a valid json file. {}", er));
                     std::fs::copy(
                         "players.json",
                         format!(
@@ -441,69 +351,46 @@ pub fn run() {
                 }
             };
         }
-        Err(er) => err(&format!("Couldn't read from file: {}", er)),
+        Err(er) => Tui::err(&format!("Couldn't read from file: {}", er)),
     }
 
+    let mut tui = Tui::new();
     loop {
-        match Tui::new().draw_main_menu() {
-            MainMenuButton::Play => game_start(&mut players),
-            MainMenuButton::Edit => character_menu(&mut players),
-            MainMenuButton::Quit => break,
+        match tui.draw_main_menu() {
+            MainMenuAction::Play => game_start(&mut players),
+            MainMenuAction::Edit => character_menu(&mut tui, &mut players),
+            MainMenuAction::Quit => break,
         }
     }
 
     std::fs::write("players.json", serde_json::to_string(&players).unwrap()).unwrap();
 }
 
-fn character_menu(players: &mut Players) {
+fn character_menu(term: &mut Tui, players: &mut Players) {
     loop {
-        clear_screen();
-        if !players.is_empty() {
-            for (i, player) in players.iter().enumerate() {
-                let i = i + 1;
-                println!("#{}", i);
-                print_player(&player, true);
-                println!("-------------------------------------------------");
+        match term.draw_character_menu(&players) {
+            CharacterMenuAction::Add => {
+                players.push(term.edit_player(None));
             }
-        } else {
-            println!("There are no players.");
-        }
-        println!("Edit: \"e\", Delete: \"d\", Add: \"a\", Go back: \"q\"");
-
-        if handle_input(|input| {
-            match input.trim() {
-                "a" => {
-                    players.push(edit_player(None));
-                }
-                "d" => {
-                    if let Ok(num) = get_input().trim().parse::<i32>() {
-                        let num = num - 1;
-                        if num < 0 || num as usize >= players.len() {
-                            err(&format!("{} is out of bounds", num + 1));
-                            return false;
-                        }
-                        players.remove(num as usize);
+            CharacterMenuAction::Edit(num) => {
+                    let num = num - 1;
+                    if num < 0 || num as usize >= players.len() {
+                        Tui::err(&format!("{} is out of bounds", num + 1));
+                        break;
                     }
-                }
-                "e" => {
-                    if let Ok(num) = get_input().trim().parse::<i32>() {
-                        let num = num - 1;
-                        if num < 0 || num as usize >= players.len() {
-                            err(&format!("{} is out of bounds", num + 1));
-                            return false;
-                        }
-                        let num = num as usize;
-                        let player_to_edit = players.remove(num);
-                        players.insert(num, edit_player(Some(player_to_edit)));
-                    }
-                }
-                "q" => return true,
-                _ => (),
+                    let num = num as usize;
+                    let player_to_edit = players.remove(num);
+                    players.insert(num, term.edit_player(Some(player_to_edit)));
             }
-
-            false
-        }) {
-            break;
+            CharacterMenuAction::Delete(num) => {
+                    let num = num - 1;
+                    if num < 0 || num as usize >= players.len() {
+                        Tui::err(&format!("{} is out of bounds", num + 1));
+                        break;
+                    }
+                    players.remove(num as usize);
+            }
+            CharacterMenuAction::Quit => break,
         }
     }
 }
