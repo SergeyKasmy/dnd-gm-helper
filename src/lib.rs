@@ -1,3 +1,6 @@
+mod term;
+
+use term::{Tui, MainMenuButton};
 use std::io::{self, Write};
 use serde::{Deserialize, Serialize};
 
@@ -442,22 +445,10 @@ pub fn run() {
     }
 
     loop {
-        clear_screen();
-        println!("1. Start game");
-        println!("2. View/Edit characters");
-        println!("q. Quit");
-
-        if handle_input(|input| {
-            match input.trim() {
-                "1" => game_start(&mut players),
-                "2" => character_menu(&mut players),
-                "q" => return true,
-                _ => (),
-            }
-
-            false
-        }) {
-            break;
+        match Tui::new().draw_main_menu() {
+            MainMenuButton::Play => game_start(&mut players),
+            MainMenuButton::Edit => character_menu(&mut players),
+            MainMenuButton::Quit => break,
         }
     }
 
