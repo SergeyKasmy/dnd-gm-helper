@@ -1,3 +1,3 @@
 fn main() {
-    dnd::run();
+    dnd_gm_helper::run();
 }
