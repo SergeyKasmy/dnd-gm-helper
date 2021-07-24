@@ -1,11 +1,10 @@
-use crate::{Player, Players, Skill};
+use crate::{Player, Players, Skill, Skills, Status, StatusType, StatusCooldownType};
 use crossterm::event::{read as read_event, Event, KeyCode};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use std::io::{Stdout, Write};
 use tui::{
     backend::CrosstermBackend,
-    text::{Span, Spans},
-    widgets::{List, ListItem, Paragraph},
+    widgets::{List, ListItem},
     Terminal,
 };
 
@@ -19,6 +18,18 @@ pub struct Tui {
 pub enum MainMenuAction {
     Play,
     Edit,
+    Quit,
+}
+
+pub enum GameAction {
+    UseSkill,
+    AddStatus,
+    DrainStatusAttacking,
+    DrainStatusAttacked,
+    ManageMoney,
+    ClearStatuses,
+    MakeTurn,
+    SkipTurn,
     Quit,
 }
 
@@ -38,7 +49,19 @@ impl Tui {
         }
     }
 
-    fn get_input() -> String {
+    fn get_input_char() -> char {
+        enable_raw_mode().unwrap();
+        loop {
+            if let Event::Key(key) = read_event().unwrap() {
+                if let KeyCode::Char(ch) = key.code {
+                    return ch;
+                }
+            }
+        }
+    }
+
+    fn get_input_string() -> String {
+        disable_raw_mode().unwrap();
         let mut input = String::new();
 
         loop {
@@ -51,6 +74,7 @@ impl Tui {
             }
         }
 
+        enable_raw_mode().unwrap();
         input
     }
 
@@ -75,16 +99,191 @@ impl Tui {
             .unwrap();
 
         loop {
-            if let Event::Key(key) = read_event().unwrap() {
-                if let KeyCode::Char(ch) = key.code {
-                    match ch {
-                        '1' => return MainMenuAction::Play,
-                        '2' => return MainMenuAction::Edit,
-                        '3' | 'q' => return MainMenuAction::Quit,
-                        _ => (),
-                    }
-                }
+            match Tui::get_input_char() {
+                '1' => return MainMenuAction::Play,
+                '2' => return MainMenuAction::Edit,
+                '3' | 'q' => return MainMenuAction::Quit,
+                _ => (),
             }
+        }
+    }
+
+    pub fn draw_game(&mut self, player: &Player) -> GameAction {
+        self.term.clear().unwrap();
+        self.term.set_cursor(0, 0).unwrap();
+        self.draw_player_stats(player);
+        disable_raw_mode().unwrap();
+        println!("Use skill: \"s\", Add status: \"a\", Drain status after attacking: \"b\", after getting attacked: \"n\", Manage money: \"m\", Next move: \" \", Skip move: \"p\", Quit game: \"q\"");
+        enable_raw_mode().unwrap();
+
+        return loop {
+            match Tui::get_input_char() {
+                's' => break GameAction::UseSkill,
+                'a' => break GameAction::AddStatus,
+                'b' => break GameAction::DrainStatusAttacking,
+                'n' => break GameAction::DrainStatusAttacked,
+                'm' => break GameAction::ManageMoney,
+                'c' => break GameAction::ClearStatuses,
+                ' ' => break GameAction::MakeTurn,
+                'p' => break GameAction::SkipTurn,
+                'q' => break GameAction::Quit,
+                _ => (),
+            }
+        }
+    }
+
+    pub fn draw_player_stats(&mut self, player: &Player) {
+        disable_raw_mode().unwrap();
+        println!("Name: {}", player.name);
+        println!("Class: {}", player.class);
+        println!("Stats:");
+        println!("....Strength: {}", player.stats.strength);
+        println!("....Dexterity: {}", player.stats.dexterity);
+        println!("....Poise: {}", player.stats.poise);
+        println!("....Wisdom: {}", player.stats.wisdom);
+        println!("....Intelligence: {}", player.stats.intelligence);
+        println!("....Charisma: {}", player.stats.charisma);
+
+        println!("Skills:");
+        for skill in &player.skills {
+            println!(
+                "....{}. CD: {}. Available after {} moves",
+                skill.name, skill.cooldown, skill.available_after
+            );
+        }
+
+        println!("Statuses:");
+        for status in &player.statuses {
+            println!(
+                "....{:?}, Still active for {} moves",
+                status.status_type, status.duration
+            );
+        }
+
+        println!("Money: {}", player.money);
+        enable_raw_mode().unwrap();
+    }
+
+    pub fn choose_skill(skills: &Skills) -> u32 {
+        disable_raw_mode().unwrap();
+        for (i, skill) in skills.iter().enumerate() {
+            println!("#{}: {}", i + 1, skill.name);
+        }
+        enable_raw_mode().unwrap();
+
+        loop {
+            match Tui::get_input_char().to_digit(10) {
+                Some(num) => return num,
+                None => Tui::err("Not a valid number"),
+            }
+        }
+        
+    }
+
+    pub fn choose_status() -> Option<Status> {
+        disable_raw_mode().unwrap();
+        println!("Choose a status:");
+        println!("Buffs:");
+        println!("#1 Discharge");
+        println!("#2 Fire Attack");
+        println!("#3 Fire Shield");
+        println!("#4 Ice Shield");
+        println!("#5 Blizzard");
+        println!("#6 Fusion");
+        println!("#7 Luck");
+        println!("Debuffs:");
+        println!("#8 Knockdown");
+        println!("#9 Poison");
+        println!("#0 Stun");
+        enable_raw_mode().unwrap();
+
+        let status_type = loop {
+            match Tui::get_input_char() {
+                '1' => break StatusType::Discharge,
+                '2' => break StatusType::FireAttack,
+                '3' => break StatusType::FireShield,
+                '4' => break StatusType::IceShield,
+                '5' => break StatusType::Blizzard,
+                '6' => break StatusType::Fusion,
+                '7' => break StatusType::Luck,
+                '8' => break StatusType::Knockdown,
+                '9' => break StatusType::Poison,
+                '0' => break StatusType::Stun,
+                'q' => return None,
+                _ => continue,
+            };
+        };
+
+        disable_raw_mode().unwrap();
+        print!("Status cooldown type (1 for normal, 2 for on getting attacked, 3 for attacking): ");
+        std::io::stdout().flush().unwrap();
+        enable_raw_mode().unwrap();
+        let status_cooldown_type = loop {
+            match Tui::get_input_char().to_digit(10) {
+                Some(num) => break num,
+                None => Tui::err("Not a valid number"),
+            }
+        };
+
+        let status_cooldown_type = match status_cooldown_type {
+            1 => StatusCooldownType::Normal,
+            2 => StatusCooldownType::Attacked,
+            3 => StatusCooldownType::Attacking,
+            _ => {
+                Tui::err("Not a valid cooldown type");
+                return None;
+            }
+        };
+
+        disable_raw_mode().unwrap();
+        print!("Enter status duration: ");
+        std::io::stdout().flush().unwrap();
+        enable_raw_mode().unwrap();
+        let duration = loop {
+            match Tui::get_input_string().trim().parse::<u32>() {
+                Ok(num) => break num,
+                Err(_) => eprintln!("Number out of bounds"),
+            }
+        };
+        
+        Some(Status { status_type, status_cooldown_type, duration })
+    }
+
+    pub fn get_money_amount() -> i64 {
+        print!("Add or remove money (use + or - before the amount): ");
+        std::io::stdout().flush().unwrap();
+        let input = Tui::get_input_string().trim().to_string();
+
+        if input.len() < 2 {
+            Tui::err(&format!(
+                "{} is not a valid input. Good examples: +500, -69",
+                input
+            ));
+            return 0;
+        }
+
+        let mut op = '.';
+        let mut amount = String::new();
+
+        for (i, ch) in input.chars().enumerate() {
+            if i == 0 {
+                op = ch;
+            } else {
+                amount.push(ch);
+            }
+        }
+
+        let amount: i64 = match amount.parse() {
+            Ok(num) => num,
+            Err(_) => {
+                Tui::err("Not a valid number");
+                return 0;
+            }
+        };
+
+        return match op {
+            '-' => -amount,
+            '+' | _ => amount,
         }
     }
 
@@ -176,7 +375,7 @@ impl Tui {
             }
             print!("{}: ", stat_name);
             std::io::stdout().flush().unwrap();
-            let input = Tui::get_input().trim().to_string();
+            let input = Tui::get_input_string().trim().to_string();
             if !old_value.is_empty() && input.is_empty() {
                 return old_value;
             }
@@ -190,7 +389,7 @@ impl Tui {
                 }
                 print!("{}: ", stat_name);
                 std::io::stdout().flush().unwrap();
-                let input = Tui::get_input().trim().to_string();
+                let input = Tui::get_input_string().trim().to_string();
                 if old_value != 0 && input.is_empty() {
                     return old_value;
                 }
@@ -232,9 +431,8 @@ impl Tui {
                     get_stat_num(&mut self.term, skill.cooldown as i64, "Cooldown") as u32;
                 print!("Reset existing cooldown to 0? ");
                 std::io::stdout().flush().unwrap();
-                let answer = Tui::get_input();
-                match answer.trim() {
-                    "y" | "yes" => skill.available_after = 0,
+                match Tui::get_input_char() {
+                    'y' => skill.available_after = 0,
                     _ => (),
                 }
             }
@@ -242,19 +440,18 @@ impl Tui {
 
         print!("Add new skills? ");
         std::io::stdout().flush().unwrap();
-        let answer = Tui::get_input();
-        match answer.trim() {
-            "y" | "yes" => loop {
+        match Tui::get_input_char() {
+            'y' => loop {
                 print!("Skill name (enter \"q\" to quit): ");
                 std::io::stdout().flush().unwrap();
-                let name = Tui::get_input().trim().to_string();
+                let name = Tui::get_input_string().trim().to_string();
                 if name == "q" {
                     break;
                 }
                 print!("Skill cooldown: ");
                 std::io::stdout().flush().unwrap();
                 let cd = loop {
-                    match Tui::get_input().trim().parse::<u32>() {
+                    match Tui::get_input_string().trim().parse::<u32>() {
                         Ok(num) => break num,
                         Err(_) => err(&mut self.term, "Not a valid number"),
                     };
