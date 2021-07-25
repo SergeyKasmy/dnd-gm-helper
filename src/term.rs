@@ -1,4 +1,4 @@
-use crate::{Player, Players, Skill, Skills, Status, StatusType, StatusCooldownType};
+use crate::{Player, Players, Skill, Skills, Status, StatusCooldownType, StatusType};
 use crossterm::event::{read as read_event, Event, KeyCode};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use std::io::{Stdout, Write};
@@ -89,9 +89,9 @@ impl Tui {
         self.term
             .draw(|frame| {
                 let items = [
-                    ListItem::new(format!("{:?}", MainMenuAction::Play)),
-                    ListItem::new(format!("{:?}", MainMenuAction::Edit)),
-                    ListItem::new(format!("{:?}", MainMenuAction::Quit)),
+                    ListItem::new("1. Start game"),
+                    ListItem::new("2. Manage characters"),
+                    ListItem::new("3. Exit"),
                 ];
                 let list = List::new(items);
                 frame.render_widget(list, frame.size());
@@ -129,7 +129,7 @@ impl Tui {
                 'q' => break GameAction::Quit,
                 _ => (),
             }
-        }
+        };
     }
 
     pub fn draw_player_stats(&mut self, player: &Player) {
@@ -164,7 +164,7 @@ impl Tui {
         enable_raw_mode().unwrap();
     }
 
-    pub fn choose_skill(skills: &Skills) -> u32 {
+    pub fn choose_skill(skills: &Skills) -> Option<u32> {
         disable_raw_mode().unwrap();
         for (i, skill) in skills.iter().enumerate() {
             println!("#{}: {}", i + 1, skill.name);
@@ -172,12 +172,18 @@ impl Tui {
         enable_raw_mode().unwrap();
 
         loop {
-            match Tui::get_input_char().to_digit(10) {
-                Some(num) => return num,
-                None => Tui::err("Not a valid number"),
+            let input = Tui::get_input_char();
+            match input {
+                'q' => return None,
+                _ => match input.to_digit(10) {
+                    Some(num) => return Some(num),
+                    None => {
+                        Tui::err("Not a valid number");
+                        return None;
+                    }
+                },
             }
         }
-        
     }
 
     pub fn choose_status() -> Option<Status> {
@@ -242,17 +248,24 @@ impl Tui {
         let duration = loop {
             match Tui::get_input_string().trim().parse::<u32>() {
                 Ok(num) => break num,
-                Err(_) => eprintln!("Number out of bounds"),
+                Err(_) => Tui::err("Number out of bounds"),
             }
         };
-        
-        Some(Status { status_type, status_cooldown_type, duration })
+
+        Some(Status {
+            status_type,
+            status_cooldown_type,
+            duration,
+        })
     }
 
     pub fn get_money_amount() -> i64 {
         print!("Add or remove money (use + or - before the amount): ");
         std::io::stdout().flush().unwrap();
         let input = Tui::get_input_string().trim().to_string();
+        if input == "q" {
+            return 0;
+        }
 
         if input.len() < 2 {
             Tui::err(&format!(
@@ -284,7 +297,7 @@ impl Tui {
         return match op {
             '-' => -amount,
             '+' | _ => amount,
-        }
+        };
     }
 
     pub fn draw_character_menu(&mut self, players: &Players) -> CharacterMenuAction {

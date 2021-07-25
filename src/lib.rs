@@ -1,7 +1,7 @@
 mod term;
 
-use term::{Tui, MainMenuAction, GameAction, CharacterMenuAction};
 use serde::{Deserialize, Serialize};
+use term::{CharacterMenuAction, GameAction, MainMenuAction, Tui};
 
 type Players = Vec<Player>;
 type Skills = Vec<Skill>;
@@ -80,8 +80,12 @@ fn game_start(tui: &mut Tui, players: &mut Players) {
                 match tui.draw_game(&player) {
                     GameAction::UseSkill => choose_skill_and_use(&mut player.skills),
                     GameAction::AddStatus => add_status(&mut player.statuses),
-                    GameAction::DrainStatusAttacking => drain_status(player, StatusCooldownType::Attacking),
-                    GameAction::DrainStatusAttacked => drain_status(player, StatusCooldownType::Attacked),
+                    GameAction::DrainStatusAttacking => {
+                        drain_status(player, StatusCooldownType::Attacking)
+                    }
+                    GameAction::DrainStatusAttacked => {
+                        drain_status(player, StatusCooldownType::Attacked)
+                    }
                     GameAction::ManageMoney => manage_money(player),
                     GameAction::ClearStatuses => player.statuses.clear(),
                     GameAction::MakeTurn => {
@@ -121,7 +125,10 @@ fn drain_status(player: &mut Player, status_type: StatusCooldownType) {
 
 fn choose_skill_and_use(skills: &mut Skills) {
     loop {
-        let input = Tui::choose_skill(&skills) as usize;
+        let input = match Tui::choose_skill(&skills) {
+            Some(num) => num as usize,
+            None => return,
+        };
         // TODO: Handle unwrap
         match skills.get_mut(input - 1) {
             Some(skill) => {
@@ -215,22 +222,22 @@ fn character_menu(term: &mut Tui, players: &mut Players) {
                 players.push(term.edit_player(None));
             }
             CharacterMenuAction::Edit(num) => {
-                    let num = num - 1;
-                    if num < 0 || num as usize >= players.len() {
-                        Tui::err(&format!("{} is out of bounds", num + 1));
-                        break;
-                    }
-                    let num = num as usize;
-                    let player_to_edit = players.remove(num);
-                    players.insert(num, term.edit_player(Some(player_to_edit)));
+                let num = num - 1;
+                if num < 0 || num as usize >= players.len() {
+                    Tui::err(&format!("{} is out of bounds", num + 1));
+                    break;
+                }
+                let num = num as usize;
+                let player_to_edit = players.remove(num);
+                players.insert(num, term.edit_player(Some(player_to_edit)));
             }
             CharacterMenuAction::Delete(num) => {
-                    let num = num - 1;
-                    if num < 0 || num as usize >= players.len() {
-                        Tui::err(&format!("{} is out of bounds", num + 1));
-                        break;
-                    }
-                    players.remove(num as usize);
+                let num = num - 1;
+                if num < 0 || num as usize >= players.len() {
+                    Tui::err(&format!("{} is out of bounds", num + 1));
+                    break;
+                }
+                players.remove(num as usize);
             }
             CharacterMenuAction::Quit => break,
         }
