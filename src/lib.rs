@@ -73,8 +73,23 @@ enum StatusCooldownType {
 }
 
 fn game_start(tui: &mut Tui, players: &mut Players) {
-    loop {
+    enum NextPlayerState {
+        Default,
+        Pending,
+        Picked(*const Player),
+    }
+    let mut next_player = NextPlayerState::Default;
+    'game: loop {
+        if let NextPlayerState::Pending = next_player {
+            next_player = NextPlayerState::Picked(Tui::pick_player(&players));
+        }
+
         for player in players.iter_mut() {
+            if let NextPlayerState::Picked(next_player) = next_player {
+                if !std::ptr::eq(next_player, player) {
+                    continue;
+                }
+            }
             loop {
                 match tui.draw_game(&player) {
                     GameAction::UseSkill => choose_skill_and_use(&mut player.skills),
@@ -92,6 +107,10 @@ fn game_start(tui: &mut Tui, players: &mut Players) {
                         break;
                     }
                     GameAction::SkipTurn => break,
+                    GameAction::NextPlayerPick => {
+                        next_player = NextPlayerState::Pending;
+                        continue 'game;
+                    }
                     GameAction::Quit => return,
                 }
             }

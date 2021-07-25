@@ -30,6 +30,7 @@ pub enum GameAction {
     ClearStatuses,
     MakeTurn,
     SkipTurn,
+    NextPlayerPick,
     Quit,
 }
 
@@ -113,7 +114,7 @@ impl Tui {
         self.term.set_cursor(0, 0).unwrap();
         self.draw_player_stats(player);
         disable_raw_mode().unwrap();
-        println!("Use skill: s, Add status: a, Drain status after attacking: b, after getting attacked: n, Manage money: m, Next move: \" \", Skip move: p, Quit game: q");
+        println!("Use skill: s, Add status: a, Drain status after attacking: b, after getting attacked: n, Manage money: m, Next move: \" \", Skip move: p, Pick next player: o, Quit game: q");
         enable_raw_mode().unwrap();
 
         return loop {
@@ -126,6 +127,7 @@ impl Tui {
                 'c' => break GameAction::ClearStatuses,
                 ' ' => break GameAction::MakeTurn,
                 'p' => break GameAction::SkipTurn,
+                'o' => break GameAction::NextPlayerPick,
                 'q' => break GameAction::Quit,
                 _ => (),
             }
@@ -300,6 +302,28 @@ impl Tui {
             '-' => -amount,
             '+' | _ => amount,
         };
+    }
+
+    pub fn pick_player(players: &Players) -> &Player {
+        disable_raw_mode().unwrap();
+        for (i, player) in players.iter().enumerate() {
+            println!("#{}. {}", i + 1, player.name);
+        }
+        enable_raw_mode().unwrap();
+
+        loop {
+            let num = loop {
+                match Tui::get_input_char().to_digit(10) {
+                    Some(num) => break (num - 1) as usize,
+                    None => (),
+                }
+            };
+
+            match players.get(num) {
+                Some(player) => return player,
+                None => (),
+            }
+        }
     }
 
     pub fn draw_character_menu(&mut self, players: &Players) -> CharacterMenuAction {
