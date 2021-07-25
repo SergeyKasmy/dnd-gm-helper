@@ -143,7 +143,9 @@ impl Tui {
         println!("....Intelligence: {}", player.stats.intelligence);
         println!("....Charisma: {}", player.stats.charisma);
 
-        println!("Skills:");
+        if !player.skills.is_empty() {
+            println!("Skills:");
+        }
         for skill in &player.skills {
             println!(
                 "....{}. CD: {}. Available after {} moves",
@@ -151,7 +153,9 @@ impl Tui {
             );
         }
 
-        println!("Statuses:");
+        if !player.statuses.is_empty() {
+            println!("Statuses:");
+        }
         for status in &player.statuses {
             println!(
                 "....{:?}, Still active for {} moves",
@@ -314,7 +318,9 @@ impl Tui {
             println!("....Intelligence: {}", player.stats.intelligence);
             println!("....Charisma: {}", player.stats.charisma);
 
-            println!("Skills:");
+            if !player.skills.is_empty() {
+                println!("Skills:");
+            }
             for skill in &player.skills {
                 println!(
                     "....{}. CD: {}. Available after {} moves",
@@ -322,7 +328,9 @@ impl Tui {
                 );
             }
 
-            println!("Statuses:");
+            if !player.statuses.is_empty() {
+                println!("Statuses:");
+            }
             for status in &player.statuses {
                 println!(
                     "....{:?}, Still active for {} moves",
