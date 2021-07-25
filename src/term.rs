@@ -28,6 +28,7 @@ pub enum GameAction {
     DrainStatusAttacked,
     ManageMoney,
     ClearStatuses,
+    ResetSkillsCD,
     MakeTurn,
     SkipTurn,
     NextPlayerPick,
@@ -146,7 +147,7 @@ impl Tui {
         self.term.set_cursor(0, 0).unwrap();
         self.draw_player_stats(player);
         disable_raw_mode().unwrap();
-        println!("Use skill: s, Add status: a, Drain status after attacking: b, after getting attacked: n, Manage money: m, Next move: \" \", Skip move: p, Pick next player: o, Quit game: q");
+        println!("Use skill: s|Add status: a|Drain status after attacking: b, after getting attacked: n|Reset statuses: c, skill CD: v|Manage money: m|Next turn: \" \"|Skip turn: p|Pick next player: o|Quit game: q");
         enable_raw_mode().unwrap();
 
         return loop {
@@ -155,8 +156,9 @@ impl Tui {
                 'a' => break GameAction::AddStatus,
                 'b' => break GameAction::DrainStatusAttacking,
                 'n' => break GameAction::DrainStatusAttacked,
-                'm' => break GameAction::ManageMoney,
                 'c' => break GameAction::ClearStatuses,
+                'v' => break GameAction::ResetSkillsCD,
+                'm' => break GameAction::ManageMoney,
                 ' ' => break GameAction::MakeTurn,
                 'p' => break GameAction::SkipTurn,
                 'o' => break GameAction::NextPlayerPick,

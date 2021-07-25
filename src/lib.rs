@@ -100,8 +100,13 @@ fn game_start(tui: &mut Tui, players: &mut Players) {
                     GameAction::DrainStatusAttacked => {
                         drain_status(player, StatusCooldownType::Attacked)
                     }
-                    GameAction::ManageMoney => manage_money(player),
                     GameAction::ClearStatuses => player.statuses.clear(),
+                    GameAction::ResetSkillsCD => {
+                        for skill in player.skills.iter_mut() {
+                            skill.available_after = 0;
+                        }
+                    }
+                    GameAction::ManageMoney => manage_money(player),
                     GameAction::MakeTurn => {
                         make_move(player);
                         break;
