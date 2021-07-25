@@ -113,7 +113,7 @@ impl Tui {
         self.term.set_cursor(0, 0).unwrap();
         self.draw_player_stats(player);
         disable_raw_mode().unwrap();
-        println!("Use skill: \"s\", Add status: \"a\", Drain status after attacking: \"b\", after getting attacked: \"n\", Manage money: \"m\", Next move: \" \", Skip move: \"p\", Quit game: \"q\"");
+        println!("Use skill: s, Add status: a, Drain status after attacking: b, after getting attacked: n, Manage money: m, Next move: \" \", Skip move: p, Quit game: q");
         enable_raw_mode().unwrap();
 
         return loop {
@@ -308,36 +308,7 @@ impl Tui {
         for (i, player) in players.iter().enumerate() {
             println!("#{}", i + 1);
             // TODO: replace with a table
-            println!("Name: {}", player.name);
-            println!("Stats:");
-            println!("....Strength: {}", player.stats.strength);
-            println!("....Dexterity: {}", player.stats.dexterity);
-            println!("....Poise: {}", player.stats.poise);
-            println!("....Wisdom: {}", player.stats.wisdom);
-            println!("....Intelligence: {}", player.stats.intelligence);
-            println!("....Charisma: {}", player.stats.charisma);
-
-            if !player.skills.is_empty() {
-                println!("Skills:");
-            }
-            for skill in &player.skills {
-                println!(
-                    "....{}. CD: {}. Available after {} moves",
-                    skill.name, skill.cooldown, skill.available_after
-                );
-            }
-
-            if !player.statuses.is_empty() {
-                println!("Statuses:");
-            }
-            for status in &player.statuses {
-                println!(
-                    "....{:?}, Still active for {} moves",
-                    status.status_type, status.duration
-                );
-            }
-
-            println!("Money: {}", player.money);
+            self.draw_player_stats(player);
         }
         println!("Add: a, Edit: e, Delete: d, Quit: q");
         enable_raw_mode().unwrap();
