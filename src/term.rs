@@ -224,8 +224,7 @@ impl Tui {
         };
 
         disable_raw_mode().unwrap();
-        print!("Status cooldown type (1 for normal, 2 for on getting attacked, 3 for attacking): ");
-        std::io::stdout().flush().unwrap();
+        println!("Status cooldown type (1 for normal, 2 for on getting attacked, 3 for attacking)");
         enable_raw_mode().unwrap();
         let status_cooldown_type = loop {
             match Tui::get_input_char().to_digit(10) {
