@@ -152,7 +152,6 @@ fn choose_skill_and_use(skills: &mut Skills) {
             Some(num) => num as usize,
             None => return,
         };
-        // TODO: Handle unwrap
         match skills.get_mut(input - 1) {
             Some(skill) => {
                 if skill.available_after == 0 {
@@ -245,22 +244,20 @@ fn character_menu(term: &mut Tui, players: &mut Players) {
                 players.push(term.edit_player(None));
             }
             CharacterMenuAction::Edit(num) => {
-                let num = num - 1;
-                if num < 0 || num as usize >= players.len() {
+                if num < 1 || num > players.len() {
                     Tui::err(&format!("{} is out of bounds", num + 1));
                     break;
                 }
-                let num = num as usize;
+                let num = num - 1;
                 let player_to_edit = players.remove(num);
                 players.insert(num, term.edit_player(Some(player_to_edit)));
             }
             CharacterMenuAction::Delete(num) => {
-                let num = num - 1;
-                if num < 0 || num as usize >= players.len() {
+                if num < 1 || num > players.len() {
                     Tui::err(&format!("{} is out of bounds", num + 1));
                     break;
                 }
-                players.remove(num as usize);
+                players.remove(num - 1);
             }
             CharacterMenuAction::Quit => break,
         }

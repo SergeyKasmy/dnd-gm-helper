@@ -1,7 +1,7 @@
 use crate::{Player, Players, Skill, Skills, Status, StatusCooldownType, StatusType};
 use crossterm::event::{read as read_event, Event, KeyCode};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use std::io::{Stdout, Write};
+use std::io::{stdout, Stdout, Write};
 use tui::{
     backend::CrosstermBackend,
     widgets::{List, ListItem},
@@ -14,7 +14,6 @@ pub struct Tui {
     term: Term,
 }
 
-#[derive(Debug)]
 pub enum MainMenuAction {
     Play,
     Edit,
@@ -37,8 +36,8 @@ pub enum GameAction {
 
 pub enum CharacterMenuAction {
     Add,
-    Edit(i32),
-    Delete(i32),
+    Edit(usize),
+    Delete(usize),
     Quit,
 }
 
@@ -47,7 +46,7 @@ impl Tui {
         crossterm::terminal::enable_raw_mode().unwrap();
 
         Tui {
-            term: Terminal::new(CrosstermBackend::new(std::io::stdout())).unwrap(),
+            term: Terminal::new(CrosstermBackend::new(stdout())).unwrap(),
         }
     }
 
@@ -94,13 +93,13 @@ impl Tui {
                         input.push(ch);
                         disable_raw_mode().unwrap();
                         print!("{}", ch);
-                        std::io::stdout().flush().unwrap();
+                        stdout().flush().unwrap();
                         enable_raw_mode().unwrap();
                     }
                     KeyCode::Enter => {
                         disable_raw_mode().unwrap();
                         print!("\n\r");
-                        std::io::stdout().flush().unwrap();
+                        stdout().flush().unwrap();
                         enable_raw_mode().unwrap();
                         break;
                     }
@@ -281,7 +280,7 @@ impl Tui {
 
         disable_raw_mode().unwrap();
         print!("Enter status duration: ");
-        std::io::stdout().flush().unwrap();
+        stdout().flush().unwrap();
         enable_raw_mode().unwrap();
         let duration = loop {
             match Tui::get_input_string().trim().parse::<u32>() {
@@ -299,7 +298,7 @@ impl Tui {
 
     pub fn get_money_amount() -> i64 {
         print!("Add or remove money (use + or - before the amount): ");
-        std::io::stdout().flush().unwrap();
+        stdout().flush().unwrap();
         let input = Tui::get_input_string().trim().to_string();
         if input == "q" {
             return 0;
@@ -377,34 +376,22 @@ impl Tui {
                     match ch {
                         'a' => return CharacterMenuAction::Add,
                         'e' => {
-                            disable_raw_mode().unwrap();
-                            let mut input = String::new();
-                            loop {
-                                if let Event::Key(key) = read_event().unwrap() {
-                                    if let KeyCode::Enter = key.code {
-                                        break;
-                                    }
-                                    if let KeyCode::Char(ch) = key.code {
-                                        input.push(ch);
-                                    }
-                                }
-                            }
-                            return CharacterMenuAction::Edit(input.parse::<i32>().unwrap());
+                            let input: usize = loop {
+                                match Tui::get_input_string().parse() {
+                                    Ok(num) => break num,
+                                    Err(_) => Tui::err("Not a valid number"),
+                                };
+                            };
+                            return CharacterMenuAction::Edit(input);
                         }
                         'd' => {
-                            disable_raw_mode().unwrap();
-                            let mut input = String::new();
-                            loop {
-                                if let Event::Key(key) = read_event().unwrap() {
-                                    if let KeyCode::Enter = key.code {
-                                        break;
-                                    }
-                                    if let KeyCode::Char(ch) = key.code {
-                                        input.push(ch);
-                                    }
-                                }
-                            }
-                            return CharacterMenuAction::Delete(input.parse::<i32>().unwrap());
+                            let input: usize = loop {
+                                match Tui::get_input_string().parse() {
+                                    Ok(num) => break num,
+                                    Err(_) => Tui::err("Not a valid number"),
+                                };
+                            };
+                            return CharacterMenuAction::Delete(input);
                         }
                         'q' => return CharacterMenuAction::Quit,
                         _ => (),
@@ -421,7 +408,7 @@ impl Tui {
                 println!("Old {}: {}. Press enter to skip", stat_name, old_value);
             }
             print!("{}: ", stat_name);
-            std::io::stdout().flush().unwrap();
+            stdout().flush().unwrap();
             let input = Tui::get_input_string().trim().to_string();
             if !old_value.is_empty() && input.is_empty() {
                 return old_value;
@@ -435,7 +422,7 @@ impl Tui {
                     println!("Old {}: {}. Press enter to skip", stat_name, old_value);
                 }
                 print!("{}: ", stat_name);
-                std::io::stdout().flush().unwrap();
+                stdout().flush().unwrap();
                 let input = Tui::get_input_string().trim().to_string();
                 if old_value != 0 && input.is_empty() {
                     return old_value;
@@ -449,8 +436,8 @@ impl Tui {
 
         fn err(_term: &mut Term, text: &str) {
             print!("{}", text);
-            std::io::stdout().flush().unwrap();
-            //std::io::stdout().flush();
+            stdout().flush().unwrap();
+            //stdout().flush();
             read_event().unwrap();
         }
 
@@ -476,7 +463,7 @@ impl Tui {
                 skill.cooldown =
                     get_stat_num(&mut self.term, skill.cooldown as i64, "Cooldown") as u32;
                 print!("Reset existing cooldown to 0? ");
-                std::io::stdout().flush().unwrap();
+                stdout().flush().unwrap();
                 match Tui::get_input_char() {
                     'y' => skill.available_after = 0,
                     _ => (),
@@ -488,13 +475,13 @@ impl Tui {
         match Tui::get_input_char() {
             'y' => loop {
                 print!("Skill name (\"q\" to quit): ");
-                std::io::stdout().flush().unwrap();
+                stdout().flush().unwrap();
                 let name = Tui::get_input_string().trim().to_string();
                 if name == "q" {
                     break;
                 }
                 print!("Skill cooldown: ");
-                std::io::stdout().flush().unwrap();
+                stdout().flush().unwrap();
                 let cd = loop {
                     match Tui::get_input_string().trim().parse::<u32>() {
                         Ok(num) => break num,
