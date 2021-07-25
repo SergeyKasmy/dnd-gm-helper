@@ -135,7 +135,6 @@ impl Tui {
     pub fn draw_player_stats(&mut self, player: &Player) {
         disable_raw_mode().unwrap();
         println!("Name: {}", player.name);
-        println!("Class: {}", player.class);
         println!("Stats:");
         println!("....Strength: {}", player.stats.strength);
         println!("....Dexterity: {}", player.stats.dexterity);
@@ -307,7 +306,6 @@ impl Tui {
             println!("#{}", i + 1);
             // TODO: replace with a table
             println!("Name: {}", player.name);
-            println!("Class: {}", player.class);
             println!("Stats:");
             println!("....Strength: {}", player.stats.strength);
             println!("....Dexterity: {}", player.stats.dexterity);
@@ -424,7 +422,6 @@ impl Tui {
         let mut player: Player = player.unwrap_or_default();
 
         player.name = get_text(&mut self.term, player.name, "Name");
-        player.class = get_text(&mut self.term, player.class, "Class");
 
         println!("Stats:");
         player.stats.strength = get_stat_num(&mut self.term, player.stats.strength, "Strength");

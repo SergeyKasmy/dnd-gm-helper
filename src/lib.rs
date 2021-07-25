@@ -10,7 +10,6 @@ type Statuses = Vec<Status>;
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub struct Player {
     name: String,
-    class: String,
     stats: Stats,
     skills: Vec<Skill>,
     statuses: Vec<Status>,
