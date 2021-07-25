@@ -61,6 +61,7 @@ impl Tui {
         }
     }
 
+    #[cfg(not(target_os = "windows"))]
     fn get_input_string() -> String {
         disable_raw_mode().unwrap();
         let mut input = String::new();
@@ -76,6 +77,37 @@ impl Tui {
         }
 
         enable_raw_mode().unwrap();
+        input
+    }
+
+    // TODO: do something about this shit
+    #[cfg(target_os = "windows")]
+    fn get_input_string() -> String {
+        enable_raw_mode().unwrap();
+        let mut input = String::new();
+
+        loop {
+            if let Event::Key(key) = read_event().unwrap() {
+                match key.code {
+                    KeyCode::Char(ch) => {
+                        input.push(ch);
+                        disable_raw_mode().unwrap();
+                        print!("{}", ch);
+                        std::io::stdout().flush().unwrap();
+                        enable_raw_mode().unwrap();
+                    }
+                    KeyCode::Enter => {
+                        disable_raw_mode().unwrap();
+                        print!("\n\r");
+                        std::io::stdout().flush().unwrap();
+                        enable_raw_mode().unwrap();
+                        break;
+                    }
+                    _ => (),
+                }
+            }
+        }
+
         input
     }
 
@@ -450,11 +482,10 @@ impl Tui {
             }
         }
 
-        print!("Add new skills? ");
-        std::io::stdout().flush().unwrap();
+        println!("Add new skills?");
         match Tui::get_input_char() {
             'y' => loop {
-                print!("Skill name (enter \"q\" to quit): ");
+                print!("Skill name (\"q\" to quit): ");
                 std::io::stdout().flush().unwrap();
                 let name = Tui::get_input_string().trim().to_string();
                 if name == "q" {
