@@ -11,7 +11,7 @@ use std::io::{stdout, Stdout, Write};
 use tui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Style, Modifier},
     text::{Span, Spans},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Widget},
     Terminal,
@@ -168,14 +168,52 @@ impl Tui {
     }
 
     pub fn draw_game(&mut self, player: &Player) -> GameAction {
-        unimplemented!();
-        /*
-        self.term.clear().unwrap();
-        self.term.set_cursor(0, 0).unwrap();
-        self.draw_player_stats(player);
-        disable_raw_mode().unwrap();
-        println!("Use skill: s|Add status: a|Drain status after attacking: b, after getting attacked: n|Reset statuses: c, skill CD: v|Manage money: m|Next turn: \" \"|Skip turn: p|Pick next player: o|Quit game: q");
-        enable_raw_mode().unwrap();
+        let player_stats = self.print_player_stats(player);
+        //let statusbar_text = "Use skill: s|Add status: a|Drain status after attacking: b, after getting attacked: n|Reset statuses: c, skill CD: v|Manage money: m|Next turn: \" \"|Skip turn: p|Pick next player: o|Quit game: q";
+        let delimiter = Span::raw(" | ");
+        let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
+        let statusbar_text = Spans::from(vec![
+                                         "Use ".into(),
+                                         Span::styled("s", style_underlined),
+                                         "kill".into(),
+                                         delimiter.clone(),
+                                         Span::styled("A", style_underlined),
+                                         "dd status".into(),
+                                         delimiter.clone(),
+                                         "Drain status (a".into(),
+                                         Span::styled("f", style_underlined),
+                                         "ter attacking".into(),
+                                         ", ".into(),
+                                         "after ".into(),
+                                         Span::styled("g", style_underlined),
+                                         "etting attacked)".into(),
+                                         delimiter.clone(),
+                                         Span::styled("C", style_underlined),
+                                         "lear statuses".into(),
+                                         ", ".into(),
+                                         "skill CD :".into(),
+                                         Span::styled("v", style_underlined),
+                                         delimiter.clone(),
+                                         "Manage ".into(),
+                                         Span::styled("m", style_underlined),
+                                         "oney".into(),
+                                         delimiter.clone(),
+                                         "Next turn: \"".into(),
+                                         Span::styled(" ", style_underlined),
+                                         "\"".into(),
+                                         delimiter.clone(),
+                                         "Ski".into(),
+                                         Span::styled("p", style_underlined),
+                                         " turn".into(),
+                                         delimiter.clone(),
+                                         Span::styled("P", style_underlined),
+                                         "ick next pl.".into(),
+                                         delimiter.clone(),
+                                         Span::styled("Q", style_underlined),
+                                         "uit".into(),
+        ]);
+
+        self.draw(Paragraph::new(player_stats), statusbar_text.into());
 
         return loop {
             match Tui::get_input_char() {
@@ -193,42 +231,42 @@ impl Tui {
                 _ => (),
             }
         };
-        */
     }
 
-    pub fn draw_player_stats(&mut self, player: &Player) {
-        disable_raw_mode().unwrap();
-        println!("Name: {}", player.name);
-        println!("Stats:");
-        println!("....Strength: {}", player.stats.strength);
-        println!("....Dexterity: {}", player.stats.dexterity);
-        println!("....Poise: {}", player.stats.poise);
-        println!("....Wisdom: {}", player.stats.wisdom);
-        println!("....Intelligence: {}", player.stats.intelligence);
-        println!("....Charisma: {}", player.stats.charisma);
+    pub fn print_player_stats(&self, player: &Player) -> Vec<Spans> {
+        let mut out: Vec<Spans> = Vec::with_capacity(10);
+        out.push(format!("Name: {}", player.name).into());
+        out.push("Stats:".into());
+        out.push(format!("....Strength: {}", player.stats.strength).into());
+        out.push(format!("....Dexterity: {}", player.stats.dexterity).into());
+        out.push(format!("....Poise: {}", player.stats.poise).into());
+        out.push(format!("....Wisdom: {}", player.stats.wisdom).into());
+        out.push(format!("....Intelligence: {}", player.stats.intelligence).into());
+        out.push(format!("....Charisma: {}", player.stats.charisma).into());
 
         if !player.skills.is_empty() {
-            println!("Skills:");
+            out.push("Skills:".into());
         }
         for skill in &player.skills {
-            println!(
+            out.push(format!(
                 "....{}. CD: {}. Available after {} moves",
                 skill.name, skill.cooldown, skill.available_after
-            );
+            ).into());
         }
 
         if !player.statuses.is_empty() {
-            println!("Statuses:");
+            out.push("Statuses:".into());
         }
         for status in &player.statuses {
-            println!(
+            out.push(format!(
                 "....{:?}, Still active for {} moves",
                 status.status_type, status.duration
-            );
+            ).into());
         }
 
-        println!("Money: {}", player.money);
-        enable_raw_mode().unwrap();
+        out.push(format!("Money: {}", player.money).into());
+
+        out
     }
 
     pub fn choose_skill(skills: &Skills) -> Option<u32> {
