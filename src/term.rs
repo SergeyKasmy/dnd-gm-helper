@@ -1,14 +1,19 @@
+// TMP
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_imports)]
+
 use crate::{Player, Players, Skill, Skills, Status, StatusCooldownType, StatusType};
 use crossterm::event::{read as read_event, Event, KeyCode};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use std::io::{stdout, Stdout, Write};
 use std::cell::RefCell;
+use std::io::{stdout, Stdout, Write};
 use tui::{
     backend::CrosstermBackend,
-    widgets::{Widget, Clear, List, ListItem, Block, Borders, Paragraph},
-    layout::{Layout, Rect, Constraint, Direction},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Style},
     text::{Span, Spans},
-    style::{Style, Color},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Widget},
     Terminal,
 };
 
@@ -42,9 +47,8 @@ pub enum CharacterMenuAction {
 }
 
 pub struct Tui {
-    term: RefCell<Term>
+    term: RefCell<Term>,
 }
-
 
 impl Tui {
     pub fn new() -> Tui {
@@ -56,21 +60,22 @@ impl Tui {
     }
 
     fn draw<T: Widget>(&self, widget: T, statusbar: Spans) {
-        self.term.borrow_mut().clear();
-        self.term.borrow_mut().draw(|frame| {
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                             Constraint::Min(10),
-                             Constraint::Length(1),
-                ].as_ref())
-                .split(frame.size());
+        self.term.borrow_mut().clear().unwrap();
+        self.term
+            .borrow_mut()
+            .draw(|frame| {
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Min(10), Constraint::Length(1)].as_ref())
+                    .split(frame.size());
 
-            frame.render_widget(widget, chunks[0]);
+                frame.render_widget(widget, chunks[0]);
 
-            let paragraph = Paragraph::new(statusbar).style(Style::default().bg(Color::Cyan).fg(Color::Black));
-            frame.render_widget(paragraph, chunks[1]);
-        }).unwrap();
+                let paragraph = Paragraph::new(statusbar)
+                    .style(Style::default().bg(Color::Cyan).fg(Color::Black));
+                frame.render_widget(paragraph, chunks[1]);
+            })
+            .unwrap();
     }
 
     fn get_input_char() -> char {
@@ -141,15 +146,16 @@ impl Tui {
     }
 
     pub fn draw_main_menu(&mut self) -> MainMenuAction {
-        //self.term.clear().unwrap();
-
         let items = [
             ListItem::new("1. Start game"),
             ListItem::new("2. Manage characters"),
             ListItem::new("3. Exit"),
         ];
         let list = List::new(items);
-        self.draw(list, Span::raw("Status bar").into());
+        self.draw(
+            list,
+            Span::raw(format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION"))).into(),
+        );
 
         loop {
             match Tui::get_input_char() {
