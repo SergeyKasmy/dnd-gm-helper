@@ -2,17 +2,17 @@ use crate::{Player, Players, Skill, Skills, Status, StatusCooldownType, StatusTy
 use crossterm::event::{read as read_event, Event, KeyCode};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use std::io::{stdout, Stdout, Write};
+use std::cell::RefCell;
 use tui::{
     backend::CrosstermBackend,
-    widgets::{List, ListItem},
+    widgets::{Widget, Clear, List, ListItem, Block, Borders, Paragraph},
+    layout::{Layout, Rect, Constraint, Direction},
+    text::{Span, Spans},
+    style::{Style, Color},
     Terminal,
 };
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
-
-pub struct Tui {
-    term: Term,
-}
 
 pub enum MainMenuAction {
     Play,
@@ -41,13 +41,36 @@ pub enum CharacterMenuAction {
     Quit,
 }
 
+pub struct Tui {
+    term: RefCell<Term>
+}
+
+
 impl Tui {
     pub fn new() -> Tui {
-        crossterm::terminal::enable_raw_mode().unwrap();
+        enable_raw_mode().unwrap();
 
-        Tui {
-            term: Terminal::new(CrosstermBackend::new(stdout())).unwrap(),
-        }
+        let term = RefCell::new(Terminal::new(CrosstermBackend::new(stdout())).unwrap());
+
+        Tui { term }
+    }
+
+    fn draw<T: Widget>(&self, widget: T, statusbar: Spans) {
+        self.term.borrow_mut().clear();
+        self.term.borrow_mut().draw(|frame| {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                             Constraint::Min(10),
+                             Constraint::Length(1),
+                ].as_ref())
+                .split(frame.size());
+
+            frame.render_widget(widget, chunks[0]);
+
+            let paragraph = Paragraph::new(statusbar).style(Style::default().bg(Color::Cyan).fg(Color::Black));
+            frame.render_widget(paragraph, chunks[1]);
+        }).unwrap();
     }
 
     fn get_input_char() -> char {
@@ -118,18 +141,15 @@ impl Tui {
     }
 
     pub fn draw_main_menu(&mut self) -> MainMenuAction {
-        self.term.clear().unwrap();
-        self.term
-            .draw(|frame| {
-                let items = [
-                    ListItem::new("1. Start game"),
-                    ListItem::new("2. Manage characters"),
-                    ListItem::new("3. Exit"),
-                ];
-                let list = List::new(items);
-                frame.render_widget(list, frame.size());
-            })
-            .unwrap();
+        //self.term.clear().unwrap();
+
+        let items = [
+            ListItem::new("1. Start game"),
+            ListItem::new("2. Manage characters"),
+            ListItem::new("3. Exit"),
+        ];
+        let list = List::new(items);
+        self.draw(list, Span::raw("Status bar").into());
 
         loop {
             match Tui::get_input_char() {
@@ -142,6 +162,8 @@ impl Tui {
     }
 
     pub fn draw_game(&mut self, player: &Player) -> GameAction {
+        unimplemented!();
+        /*
         self.term.clear().unwrap();
         self.term.set_cursor(0, 0).unwrap();
         self.draw_player_stats(player);
@@ -165,6 +187,7 @@ impl Tui {
                 _ => (),
             }
         };
+        */
     }
 
     pub fn draw_player_stats(&mut self, player: &Player) {
@@ -360,6 +383,8 @@ impl Tui {
     }
 
     pub fn draw_character_menu(&mut self, players: &Players) -> CharacterMenuAction {
+        unimplemented!();
+        /*
         self.term.clear().unwrap();
         disable_raw_mode().unwrap();
         for (i, player) in players.iter().enumerate() {
@@ -399,9 +424,12 @@ impl Tui {
                 }
             }
         }
+        */
     }
 
     pub fn edit_player(&mut self, player: Option<Player>) -> Player {
+        unimplemented!();
+        /*
         disable_raw_mode().unwrap();
         fn get_text(_term: &mut Term, old_value: String, stat_name: &str) -> String {
             if !old_value.is_empty() {
@@ -496,5 +524,6 @@ impl Tui {
         player.money = get_stat_num(&mut self.term, player.money, "Money");
         enable_raw_mode().unwrap();
         player
+    */
     }
 }
