@@ -8,6 +8,7 @@ use crossterm::event::{read as read_event, Event, KeyCode};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use std::cell::RefCell;
 use std::io::{stdout, Stdout, Write};
+use std::collections::HashMap;
 use tui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -56,6 +57,63 @@ pub enum CharacterMenuMode {
 enum StatusBarType {
     Normal,
     Error,
+}
+
+#[derive(Copy, Clone)]
+enum PlayerField {
+    Name,
+    Stat(StatType),
+    SkillName(usize),
+    SkillCD(usize),
+    Money,
+    // TODO: replace with Option<>
+    Done,
+}
+
+impl PlayerField {
+    fn next(&self) -> PlayerField {
+        match self {
+            PlayerField::Name => PlayerField::Stat(StatType::Strength),
+            PlayerField::Stat(stat) => match stat {
+                StatType::Strength => PlayerField::Stat(StatType::Dexterity),
+                StatType::Dexterity => PlayerField::Stat(StatType::Poise),
+                StatType::Poise => PlayerField::Stat(StatType::Wisdom),
+                StatType::Wisdom => PlayerField::Stat(StatType::Intelligence),
+                StatType::Intelligence => PlayerField::Stat(StatType::Charisma),
+                StatType::Charisma => PlayerField::SkillName(0),
+            },
+            PlayerField::SkillName(i) => PlayerField::SkillCD(*i),
+            PlayerField::SkillCD(i) => PlayerField::SkillName(*i + 1),
+            // TODO: should money show in the add character screen? what do even do about them?
+            PlayerField::Money => PlayerField::Done,
+            PlayerField::Done => PlayerField::Done,
+        }
+    }
+
+    fn prev(&self) -> PlayerField {
+        match self {
+            PlayerField::Name => PlayerField::Name,
+            PlayerField::Stat(stat) => match stat {
+                StatType::Strength => PlayerField::Name,
+                StatType::Dexterity => PlayerField::Stat(StatType::Strength),
+                StatType::Poise => PlayerField::Stat(StatType::Dexterity),
+                StatType::Wisdom => PlayerField::Stat(StatType::Poise),
+                StatType::Intelligence => PlayerField::Stat(StatType::Wisdom),
+                StatType::Charisma => PlayerField::Stat(StatType::Intelligence),
+            },
+            PlayerField::SkillName(i) => {
+                if *i == 0 {
+                    PlayerField::Stat(StatType::Charisma)
+                } else {
+                    PlayerField::SkillCD(*i - 1)
+                }
+            }
+            PlayerField::SkillCD(i) => PlayerField::SkillName(*i),
+            // TODO: same as in next()
+            PlayerField::Money => PlayerField::Done,
+            PlayerField::Done => PlayerField::Done,
+        }
+    }
 }
 
 pub struct Tui {
@@ -305,37 +363,39 @@ impl Tui {
         };
     }
 
-    // TODO: use an enum instead of just the id of the field
-    fn player_stats_table(player: &Player, selected: Option<u32>) -> impl Widget + '_ {
+    fn player_stats_table(player: &Player, selected: Option<PlayerField>) -> impl Widget + '_ {
+        let selected_style = Style::default().bg(Color::White).fg(Color::Black);
+        // 8 = name, 6 stats, money. skills may not exist
+        //let styles: HashMap<PlayerField, Style> = HashMap::with_capacity(8);
         let mut rows = vec![
-            Row::new(["Name", player.name.as_str()]),
+            Row::new(["Name", player.name.as_str()]).style(if let Some(PlayerField::Name) = selected { selected_style.clone() } else { Style::default() } ),
             Row::new(["Stats"]),
             // TODO: mb use a slice instead
             Row::new::<Vec<Cell>>(vec![
                 "Strength".into(),
                 player.stats.strength.to_string().into(),
-            ]),
+            ]).style(if let Some(PlayerField::Stat(StatType::Strength)) = selected { selected_style.clone() } else { Style::default() } ),
             Row::new::<Vec<Cell>>(vec![
                 "Dexterity".into(),
                 player.stats.dexterity.to_string().into(),
-            ]),
-            Row::new::<Vec<Cell>>(vec!["Poise".into(), player.stats.poise.to_string().into()]),
+            ]).style(if let Some(PlayerField::Stat(StatType::Dexterity)) = selected { selected_style.clone() } else { Style::default() } ),
+            Row::new::<Vec<Cell>>(vec!["Poise".into(), player.stats.poise.to_string().into()]).style(if let Some(PlayerField::Stat(StatType::Poise)) = selected { selected_style.clone() } else { Style::default() } ),
             Row::new::<Vec<Cell>>(vec![
                 "Wisdom".into(),
                 player.stats.wisdom.to_string().into(),
-            ]),
+            ]).style(if let Some(PlayerField::Stat(StatType::Wisdom)) = selected { selected_style.clone() } else { Style::default() } ),
             Row::new::<Vec<Cell>>(vec![
                 "Intelligence".into(),
                 player.stats.intelligence.to_string().into(),
-            ]),
+            ]).style(if let Some(PlayerField::Stat(StatType::Intelligence)) = selected { selected_style.clone() } else { Style::default() } ),
             Row::new::<Vec<Cell>>(vec![
                 "Charisma".into(),
                 player.stats.charisma.to_string().into(),
-            ]),
+            ]).style(if let Some(PlayerField::Stat(StatType::Charisma)) = selected { selected_style.clone() } else { Style::default() } ),
             Row::new(["Skills"]),
         ];
 
-        for skill in player.skills.iter() {
+        for (i, skill) in player.skills.iter().enumerate() {
             rows.push(Row::new::<Vec<Cell>>(vec![
                 "Name".into(),
                 skill.name.as_str().into(),
@@ -343,13 +403,13 @@ impl Tui {
                 skill.cooldown.to_string().into(),
                 "Available after".into(),
                 skill.available_after.to_string().into(),
-            ]));
+            ]).style(if let Some(PlayerField::SkillName(i)) | Some(PlayerField::SkillCD(i)) = selected { selected_style.clone() } else { Style::default() } ));
         }
 
         rows.push(Row::new::<Vec<Cell>>(vec![
             "Money".into(),
             player.money.to_string().into(),
-        ]));
+        ]).style(if let Some(PlayerField::Money) = selected { selected_style.clone() } else { Style::default() } ));
 
         Table::new(rows).widths(
             [
@@ -524,58 +584,7 @@ impl Tui {
         mode: CharacterMenuMode,
         players: &mut Players,
     ) -> Option<CharacterMenuAction> {
-        #[derive(Copy, Clone)]
-        enum AddModeCurrentField {
-            Name,
-            Stat(StatType),
-            SkillName(usize),
-            SkillCD(usize),
-            Done,
-        }
-
-        impl AddModeCurrentField {
-            fn next(&self) -> AddModeCurrentField {
-                match self {
-                    AddModeCurrentField::Name => AddModeCurrentField::Stat(StatType::Strength),
-                    AddModeCurrentField::Stat(stat) => match stat {
-                        StatType::Strength => AddModeCurrentField::Stat(StatType::Dexterity),
-                        StatType::Dexterity => AddModeCurrentField::Stat(StatType::Poise),
-                        StatType::Poise => AddModeCurrentField::Stat(StatType::Wisdom),
-                        StatType::Wisdom => AddModeCurrentField::Stat(StatType::Intelligence),
-                        StatType::Intelligence => AddModeCurrentField::Stat(StatType::Charisma),
-                        StatType::Charisma => AddModeCurrentField::SkillName(0),
-                    },
-                    AddModeCurrentField::SkillName(i) => AddModeCurrentField::SkillCD(*i),
-                    AddModeCurrentField::SkillCD(i) => AddModeCurrentField::SkillName(*i + 1),
-                    AddModeCurrentField::Done => AddModeCurrentField::Done,
-                }
-            }
-
-            fn prev(&self) -> AddModeCurrentField {
-                match self {
-                    AddModeCurrentField::Name => AddModeCurrentField::Name,
-                    AddModeCurrentField::Stat(stat) => match stat {
-                        StatType::Strength => AddModeCurrentField::Name,
-                        StatType::Dexterity => AddModeCurrentField::Stat(StatType::Strength),
-                        StatType::Poise => AddModeCurrentField::Stat(StatType::Dexterity),
-                        StatType::Wisdom => AddModeCurrentField::Stat(StatType::Poise),
-                        StatType::Intelligence => AddModeCurrentField::Stat(StatType::Wisdom),
-                        StatType::Charisma => AddModeCurrentField::Stat(StatType::Intelligence),
-                    },
-                    AddModeCurrentField::SkillName(i) => {
-                        if *i == 0 {
-                            AddModeCurrentField::Stat(StatType::Charisma)
-                        } else {
-                            AddModeCurrentField::SkillCD(*i - 1)
-                        }
-                    }
-                    AddModeCurrentField::SkillCD(i) => AddModeCurrentField::SkillName(*i),
-                    AddModeCurrentField::Done => AddModeCurrentField::Done,
-                }
-            }
-        }
-
-        let mut add_mode_current_field: Option<AddModeCurrentField> = None;
+        let mut add_mode_current_field: Option<PlayerField> = None;
         let mut add_mode_buffer: Option<String> = None;
 
         if let CharacterMenuMode::Add | CharacterMenuMode::Edit(_) = mode {
@@ -584,7 +593,7 @@ impl Tui {
                 players.push(Player::default());
             }
 
-            add_mode_current_field = Some(AddModeCurrentField::Name);
+            add_mode_current_field = Some(PlayerField::Name);
         }
 
         let mut errors: Vec<String> = Vec::new();
@@ -599,14 +608,14 @@ impl Tui {
                 };
 
                 match add_mode_current_field.as_ref().unwrap() {
-                    AddModeCurrentField::Name => {
+                    PlayerField::Name => {
                         // TODO: don't copy twice stupid
                         if let None = add_mode_buffer {
                             add_mode_buffer = Some(current_player.name.clone());
                         }
                         current_player.name = add_mode_buffer.as_ref().unwrap().clone()
                     }
-                    AddModeCurrentField::Stat(stat) => {
+                    PlayerField::Stat(stat) => {
                         let current_stat = match stat {
                             StatType::Strength => &mut current_player.stats.strength,
                             StatType::Dexterity => &mut current_player.stats.dexterity,
@@ -629,7 +638,7 @@ impl Tui {
                     // TODO: make that look nicer
                     // currently a new skill just appears out of nowhere when you start typing
                     // TODO: pop a skill when pressed Enter with an empty name
-                    AddModeCurrentField::SkillName(i) => {
+                    PlayerField::SkillName(i) => {
                         if let None = current_player.skills.get(*i) {
                             current_player.skills.push(Skill::default());
                         }
@@ -641,14 +650,13 @@ impl Tui {
 
                         skill.name = add_mode_buffer.as_ref().unwrap().clone();
                     }
-                    AddModeCurrentField::SkillCD(i) => {
+                    PlayerField::SkillCD(i) => {
                         if let None = current_player.skills.get(*i) {
                             current_player.skills.push(Skill::default());
                         }
                         let skill = &mut current_player.skills[*i];
 
                         if let None = add_mode_buffer {
-                            *add_mode_buffer.as_mut().unwrap() = skill.cooldown.to_string();
                             add_mode_buffer = Some(skill.cooldown.to_string());
                         }
                         match add_mode_buffer.as_ref().unwrap().parse::<u32>() {
@@ -659,7 +667,9 @@ impl Tui {
                             ))),
                         }
                     }
-                    AddModeCurrentField::Done => return None,
+                    // TODO: same as in next()
+                    PlayerField::Money => return None,
+                    PlayerField::Done => return None,
                 }
             }
 
@@ -752,7 +762,7 @@ impl Tui {
 
                         frame.render_widget(paragraph, tables[1]);
                         */
-                        frame.render_widget(Tui::player_stats_table(&players[num], None), tables[1]);
+                        frame.render_widget(Tui::player_stats_table(&players[num], add_mode_current_field), tables[1]);
                     }
                 })
                 .unwrap();
@@ -841,12 +851,12 @@ impl Tui {
                                 let current = add_mode_current_field.as_mut().unwrap();
 
                                 // if pressed Enter with an empty buffer when adding skills - the last item -> done
-                                if let AddModeCurrentField::SkillName(_) = current {
+                                if let PlayerField::SkillName(_) = current {
                                     if add_mode_buffer.as_ref().unwrap().is_empty() {
-                                        next = AddModeCurrentField::Done;
+                                        next = PlayerField::Done;
                                     }
                                 // don't assume a default skill cd, just don't do anything
-                                } else if let AddModeCurrentField::SkillCD(_) = current {
+                                } else if let PlayerField::SkillCD(_) = current {
                                     if add_mode_buffer.as_ref().unwrap().is_empty() {
                                         continue;
                                     }
