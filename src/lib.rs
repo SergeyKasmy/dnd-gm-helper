@@ -248,21 +248,22 @@ pub fn run() {
 }
 
 fn character_menu(term: &mut Tui, players: &mut Players) {
+    let mut last_selected = 0;
     loop {
         match term
-            .draw_character_menu(CharacterMenuMode::View, players)
+            .draw_character_menu(CharacterMenuMode::View(last_selected), players)
             .unwrap()
         {
             CharacterMenuAction::Add => {
                 term.draw_character_menu(CharacterMenuMode::Add, players);
             }
             CharacterMenuAction::Edit(num) => {
-                let player_to_edit = players.remove(num);
-                todo!();
-                //players.insert(num, term.edit_player(Some(player_to_edit)));
+                term.draw_character_menu(CharacterMenuMode::Edit(num), players);
+                last_selected = num;
             }
             CharacterMenuAction::Delete(num) => {
                 players.remove(num);
+                last_selected = num - 1;
             }
             CharacterMenuAction::Quit => break,
         }

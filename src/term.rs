@@ -46,10 +46,11 @@ pub enum CharacterMenuAction {
     Quit,
 }
 
+#[derive(Copy, Clone)]
 pub enum CharacterMenuMode {
-    View,
+    View(usize),
     Add,
-    Edit,
+    Edit(usize),
 }
 
 enum StatusBarType {
@@ -562,9 +563,12 @@ impl Tui {
         let mut add_mode_current_field: Option<AddModeCurrentField> = None;
         let mut add_mode_buffer: Option<String> = None;
 
-        if let CharacterMenuMode::Add = mode {
+        if let CharacterMenuMode::Add | CharacterMenuMode::Edit(_) = mode {
             // add an empty entry we are going to modify next
-            players.push(Player::default());
+            if let CharacterMenuMode::Add = mode {
+                players.push(Player::default());
+            }
+
             add_mode_current_field = Some(AddModeCurrentField::Name);
             add_mode_buffer = Some(String::new());
         }
@@ -572,32 +576,31 @@ impl Tui {
         let mut errors: Vec<String> = Vec::new();
         let mut player_list_state = ListState::default();
         loop {
-            if let CharacterMenuMode::Add = mode {
+            // stupid workaround to match both Add and Edit(i) at once
+            if let (CharacterMenuMode::Add, i) | (CharacterMenuMode::Edit(i), _) = (mode, 0) {
+                let current_player = if let CharacterMenuMode::Add = mode {
+                    players.last_mut().unwrap()
+                } else {
+                    players.get_mut(i).unwrap()
+                };
+                let buffer = add_mode_buffer.as_mut().unwrap();
+
                 match add_mode_current_field.as_ref().unwrap() {
                     AddModeCurrentField::Name => {
-                        let buffer = add_mode_buffer.as_mut().unwrap();
+                        // TODO: don't copy twice stupid
                         if buffer.is_empty() {
-                            *buffer = players.last_mut().unwrap().name.clone();
+                            *buffer = current_player.name.clone();
                         }
-                        players.last_mut().unwrap().name = add_mode_buffer.as_ref().unwrap().clone()
+                        current_player.name = buffer.clone()
                     }
                     AddModeCurrentField::Stat(stat) => {
-                        let buffer = add_mode_buffer.as_mut().unwrap();
                         let current_stat = match stat {
-                                StatType::Strength => {
-                                    &mut players.last_mut().unwrap().stats.strength
-                                }
-                                StatType::Dexterity => {
-                                    &mut players.last_mut().unwrap().stats.dexterity
-                                }
-                                StatType::Poise => &mut players.last_mut().unwrap().stats.poise,
-                                StatType::Wisdom => &mut players.last_mut().unwrap().stats.wisdom,
-                                StatType::Intelligence => {
-                                    &mut players.last_mut().unwrap().stats.intelligence
-                                }
-                                StatType::Charisma => {
-                                    &mut players.last_mut().unwrap().stats.charisma
-                                }
+                            StatType::Strength => &mut current_player.stats.strength,
+                            StatType::Dexterity => &mut current_player.stats.dexterity,
+                            StatType::Poise => &mut current_player.stats.poise,
+                            StatType::Wisdom => &mut current_player.stats.wisdom,
+                            StatType::Intelligence => &mut current_player.stats.intelligence,
+                            StatType::Charisma => &mut current_player.stats.charisma,
                         };
                         if buffer.is_empty() {
                             *buffer = current_stat.to_string();
@@ -610,28 +613,26 @@ impl Tui {
                     }
                     // TODO: make that look nicer
                     // currently a new skill just appears out of nowhere when you start typing
+                    // TODO: pop a skill when pressed Enter with an empty name
                     AddModeCurrentField::SkillName(i) => {
-                        let player = players.last_mut().unwrap();
-                        if let None = player.skills.get(*i) {
-                            player.skills.push(Skill::default());
+                        if let None = current_player.skills.get(*i) {
+                            current_player.skills.push(Skill::default());
                         }
-                        let skill = &mut player.skills[*i];
+                        let skill = &mut current_player.skills[*i];
 
-                        let buffer = add_mode_buffer.as_mut().unwrap();
+                        // TODO: actually doesn't work in edit mode if you erase everything F
                         if buffer.is_empty() {
                             *buffer = skill.name.clone();
                         }
 
-                        skill.name = add_mode_buffer.as_ref().unwrap().clone();
+                        skill.name = buffer.clone();
                     }
                     AddModeCurrentField::SkillCD(i) => {
-                        let player = players.last_mut().unwrap();
-                        if let None = player.skills.get(*i) {
-                            player.skills.push(Skill::default());
+                        if let None = current_player.skills.get(*i) {
+                            current_player.skills.push(Skill::default());
                         }
-                        let skill = &mut player.skills[*i];
+                        let skill = &mut current_player.skills[*i];
 
-                        let buffer = add_mode_buffer.as_mut().unwrap();
                         if buffer.is_empty() {
                             *buffer = skill.cooldown.to_string();
                         }
@@ -652,11 +653,11 @@ impl Tui {
 
             // default currently selected entry for each mode
             match mode {
-                CharacterMenuMode::View => {
+                CharacterMenuMode::View(i) => {
                     // select the first entry if the list isn't empty
                     if player_list_items.len() > 0 {
                         if let None = player_list_state.selected() {
-                            player_list_state.select(Some(0));
+                            player_list_state.select(Some(i));
                         }
                     }
                 }
@@ -664,8 +665,8 @@ impl Tui {
                     // always select the last/currenty in process of adding entry
                     player_list_state.select(Some(player_list_items.len() - 1));
                 }
-                CharacterMenuMode::Edit => {
-                    todo!();
+                CharacterMenuMode::Edit(i) => {
+                    player_list_state.select(Some(i));
                 }
             }
 
@@ -690,7 +691,7 @@ impl Tui {
                     if errors.is_empty() {
                         let statusbar_text;
                         match mode {
-                            CharacterMenuMode::View => {
+                            CharacterMenuMode::View(_) => {
                                 statusbar_text = Spans::from(vec![
                                     " ".into(),
                                     Span::styled("A", style_underlined),
@@ -709,7 +710,9 @@ impl Tui {
                             CharacterMenuMode::Add => {
                                 statusbar_text = Spans::from("Add mode. Press ESC to quit");
                             }
-                            CharacterMenuMode::Edit => todo!(),
+                            CharacterMenuMode::Edit(_) => {
+                                statusbar_text = Spans::from("Edit mode. Press ESC to quit");
+                            }
                         }
                         frame.render_widget(
                             Tui::stylize_statusbar(statusbar_text, StatusBarType::Normal),
@@ -735,7 +738,7 @@ impl Tui {
 
             if let Event::Key(key) = read_event().unwrap() {
                 match mode {
-                    CharacterMenuMode::View => match key.code {
+                    CharacterMenuMode::View(_) => match key.code {
                         KeyCode::Char(ch) => match ch {
                             'a' => return Some(CharacterMenuAction::Add),
                             'e' => {
@@ -791,49 +794,54 @@ impl Tui {
                         }
                         _ => (),
                     },
-                    CharacterMenuMode::Add => match key.code {
+                    CharacterMenuMode::Add | CharacterMenuMode::Edit(_) => match key.code {
                         KeyCode::Char(ch) => {
                             add_mode_buffer.as_mut().unwrap().push(ch);
                         }
                         KeyCode::Up => {
-                            *add_mode_current_field.as_mut().unwrap() = add_mode_current_field.as_ref().unwrap().prev();
+                            *add_mode_current_field.as_mut().unwrap() =
+                                add_mode_current_field.as_ref().unwrap().prev();
                             add_mode_buffer.as_mut().unwrap().clear();
                         }
                         KeyCode::Down => {
-                            *add_mode_current_field.as_mut().unwrap() = add_mode_current_field.as_ref().unwrap().next();
+                            *add_mode_current_field.as_mut().unwrap() =
+                                add_mode_current_field.as_ref().unwrap().next();
                             add_mode_buffer.as_mut().unwrap().clear();
                         }
                         KeyCode::Backspace => {
                             add_mode_buffer.as_mut().unwrap().pop();
                         }
                         KeyCode::Enter => {
-                            let mut next = add_mode_current_field.as_ref().unwrap().next();
-                            let current = add_mode_current_field.as_mut().unwrap();
+                            if let CharacterMenuMode::Add = mode {
+                                let mut next = add_mode_current_field.as_ref().unwrap().next();
+                                let current = add_mode_current_field.as_mut().unwrap();
 
-                            // if pressed Enter with an empty buffer when adding skills - the last item
-                            if let AddModeCurrentField::SkillName(_) = current {
-                                if add_mode_buffer.as_ref().unwrap().is_empty() {
-                                    next = AddModeCurrentField::Done;
+                                // if pressed Enter with an empty buffer when adding skills - the last item -> done
+                                if let AddModeCurrentField::SkillName(_) = current {
+                                    if add_mode_buffer.as_ref().unwrap().is_empty() {
+                                        next = AddModeCurrentField::Done;
+                                    }
+                                // don't assume a default skill cd, just don't do anything
+                                } else if let AddModeCurrentField::SkillCD(_) = current {
+                                    if add_mode_buffer.as_ref().unwrap().is_empty() {
+                                        continue;
+                                    }
                                 }
-                            // don't assume a default skill cd, just don't do anything
-                            } else if let AddModeCurrentField::SkillCD(_) = current {
-                                if add_mode_buffer.as_ref().unwrap().is_empty() {
-                                    continue;
-                                }
+
+                                *current = next;
+                                add_mode_buffer.as_mut().unwrap().clear();
+                            } else if let CharacterMenuMode::Edit(_) = mode {
+                                return None;
                             }
-
-                            *current = next;
-                            add_mode_buffer.as_mut().unwrap().clear();
                         }
                         KeyCode::Esc => {
-                            players.pop();
+                            if let CharacterMenuMode::Add = mode {
+                                players.pop();
+                            }
                             return None;
                         }
                         _ => (),
                     },
-                    CharacterMenuMode::Edit => {
-                        todo!();
-                    }
                 }
             }
         }
