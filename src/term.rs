@@ -11,9 +11,9 @@ use std::io::{stdout, Stdout, Write};
 use tui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Modifier},
-    text::{Span, Spans},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Widget},
+    style::{Color, Modifier, Style},
+    text::{Span, Spans, Text},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Widget},
     Terminal,
 };
 
@@ -59,23 +59,15 @@ impl Tui {
         Tui { term }
     }
 
-    fn draw<T: Widget>(&self, widget: T, statusbar: Spans) {
-        self.term.borrow_mut().clear().unwrap();
-        self.term
-            .borrow_mut()
-            .draw(|frame| {
-                let chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Min(10), Constraint::Length(1)].as_ref())
-                    .split(frame.size());
+    fn get_window_size(&self, window: Rect) -> Vec<Rect> {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(10), Constraint::Length(1)].as_ref())
+            .split(window)
+    }
 
-                frame.render_widget(widget, chunks[0]);
-
-                let paragraph = Paragraph::new(statusbar)
-                    .style(Style::default().bg(Color::Cyan).fg(Color::Black));
-                frame.render_widget(paragraph, chunks[1]);
-            })
-            .unwrap();
+    fn stylize_statusbar<'a, T: Into<Text<'a>>>(text: T) -> Paragraph<'a> {
+        Paragraph::new(text.into()).style(Style::default().bg(Color::Cyan).fg(Color::Black))
     }
 
     fn get_input_char() -> char {
@@ -152,10 +144,25 @@ impl Tui {
             ListItem::new("3. Exit"),
         ];
         let list = List::new(items);
+        /*
         self.draw(
-            list,
-            Span::raw(format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION"))).into(),
+            vec![list],
         );
+        */
+
+        self.term.borrow_mut().clear().unwrap();
+        self.term
+            .borrow_mut()
+            .draw(|frame| {
+                let layout = self.get_window_size(frame.size());
+
+                frame.render_widget(list, layout[0]);
+                frame.render_widget(
+                    Tui::stylize_statusbar(format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION"))),
+                    layout[1],
+                );
+            })
+            .unwrap();
 
         loop {
             match Tui::get_input_char() {
@@ -168,52 +175,58 @@ impl Tui {
     }
 
     pub fn draw_game(&mut self, player: &Player) -> GameAction {
-        let player_stats = self.print_player_stats(player);
-        //let statusbar_text = "Use skill: s|Add status: a|Drain status after attacking: b, after getting attacked: n|Reset statuses: c, skill CD: v|Manage money: m|Next turn: \" \"|Skip turn: p|Pick next player: o|Quit game: q";
-        let delimiter = Span::raw(" | ");
-        let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
-        let statusbar_text = Spans::from(vec![
-                                         "Use ".into(),
-                                         Span::styled("s", style_underlined),
-                                         "kill".into(),
-                                         delimiter.clone(),
-                                         Span::styled("A", style_underlined),
-                                         "dd status".into(),
-                                         delimiter.clone(),
-                                         "Drain status (a".into(),
-                                         Span::styled("f", style_underlined),
-                                         "ter attacking".into(),
-                                         ", ".into(),
-                                         "after ".into(),
-                                         Span::styled("g", style_underlined),
-                                         "etting attacked)".into(),
-                                         delimiter.clone(),
-                                         Span::styled("C", style_underlined),
-                                         "lear statuses".into(),
-                                         ", ".into(),
-                                         "skill CD :".into(),
-                                         Span::styled("v", style_underlined),
-                                         delimiter.clone(),
-                                         "Manage ".into(),
-                                         Span::styled("m", style_underlined),
-                                         "oney".into(),
-                                         delimiter.clone(),
-                                         "Next turn: \"".into(),
-                                         Span::styled(" ", style_underlined),
-                                         "\"".into(),
-                                         delimiter.clone(),
-                                         "Ski".into(),
-                                         Span::styled("p", style_underlined),
-                                         " turn".into(),
-                                         delimiter.clone(),
-                                         Span::styled("P", style_underlined),
-                                         "ick next pl.".into(),
-                                         delimiter.clone(),
-                                         Span::styled("Q", style_underlined),
-                                         "uit".into(),
-        ]);
+        self.term
+            .borrow_mut()
+            .draw(|frame| {
+                let player_stats = self.print_player_stats(player);
+                let delimiter = Span::raw(" | ");
+                let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
+                let statusbar_text = Spans::from(vec![
+                    "Use ".into(),
+                    Span::styled("s", style_underlined),
+                    "kill".into(),
+                    delimiter.clone(),
+                    Span::styled("A", style_underlined),
+                    "dd status".into(),
+                    delimiter.clone(),
+                    "Drain status (a".into(),
+                    Span::styled("f", style_underlined),
+                    "ter attacking".into(),
+                    ", ".into(),
+                    "after ".into(),
+                    Span::styled("g", style_underlined),
+                    "etting attacked)".into(),
+                    delimiter.clone(),
+                    Span::styled("C", style_underlined),
+                    "lear statuses".into(),
+                    ", ".into(),
+                    "skill CD :".into(),
+                    Span::styled("v", style_underlined),
+                    delimiter.clone(),
+                    "Manage ".into(),
+                    Span::styled("m", style_underlined),
+                    "oney".into(),
+                    delimiter.clone(),
+                    "Next turn: \"".into(),
+                    Span::styled(" ", style_underlined),
+                    "\"".into(),
+                    delimiter.clone(),
+                    "Ski".into(),
+                    Span::styled("p", style_underlined),
+                    " turn".into(),
+                    delimiter.clone(),
+                    Span::styled("P", style_underlined),
+                    "ick next pl.".into(),
+                    delimiter.clone(),
+                    Span::styled("Q", style_underlined),
+                    "uit".into(),
+                ]);
+                let layout = self.get_window_size(frame.size());
 
-        self.draw(Paragraph::new(player_stats), statusbar_text.into());
+                frame.render_widget(Paragraph::new(player_stats), layout[0]);
+                frame.render_widget(Tui::stylize_statusbar(statusbar_text), layout[1]);
+            })
+            .unwrap();
 
         return loop {
             match Tui::get_input_char() {
@@ -248,20 +261,26 @@ impl Tui {
             out.push("Skills:".into());
         }
         for skill in &player.skills {
-            out.push(format!(
-                "....{}. CD: {}. Available after {} moves",
-                skill.name, skill.cooldown, skill.available_after
-            ).into());
+            out.push(
+                format!(
+                    "....{}. CD: {}. Available after {} moves",
+                    skill.name, skill.cooldown, skill.available_after
+                )
+                .into(),
+            );
         }
 
         if !player.statuses.is_empty() {
             out.push("Statuses:".into());
         }
         for status in &player.statuses {
-            out.push(format!(
-                "....{:?}, Still active for {} moves",
-                status.status_type, status.duration
-            ).into());
+            out.push(
+                format!(
+                    "....{:?}, Still active for {} moves",
+                    status.status_type, status.duration
+                )
+                .into(),
+            );
         }
 
         out.push(format!("Money: {}", player.money).into());
@@ -427,42 +446,96 @@ impl Tui {
     }
 
     pub fn draw_character_menu(&mut self, players: &Players) -> CharacterMenuAction {
-        unimplemented!();
-        /*
-        self.term.clear().unwrap();
-        disable_raw_mode().unwrap();
-        for (i, player) in players.iter().enumerate() {
-            println!("#{}", i + 1);
-            // TODO: replace with a table
-            self.draw_player_stats(player);
+        let mut player_list_items = Vec::new();
+        let mut player_list_state = ListState::default();
+        player_list_state.select(Some(0));
+
+        for player in players {
+            player_list_items.push(ListItem::new(player.name.clone()));
         }
-        println!("Add: a, Edit: e, Delete: d, Quit: q");
-        enable_raw_mode().unwrap();
 
         loop {
-            if let Event::Key(key) = read_event().unwrap() {
-                if let KeyCode::Char(ch) = key.code {
-                    match ch {
-                        'a' => return CharacterMenuAction::Add,
-                        'e' => {
-                            let input: usize = loop {
-                                match Tui::get_input_string().parse() {
-                                    Ok(num) => break num,
-                                    Err(_) => Tui::err("Not a valid number"),
+            self.term
+                .borrow_mut()
+                .draw(|frame| {
+                    let layout = self.get_window_size(frame.size());
+                    let tables = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints(
+                            [Constraint::Percentage(25), Constraint::Percentage(75)].as_ref(),
+                        )
+                        .split(layout[0]);
+
+                    let player_list = List::new(player_list_items.clone())
+                        .block(Block::default().title("Players")
+                        .borders(Borders::ALL))
+                        .highlight_symbol(">> ");
+
+                    let table_player_stats =
+                        Block::default().title("Player stats").borders(Borders::ALL);
+                    let statusbar_text = "Add: a, Edit: e, Delete: d, Quit: q";
+
+
+                    frame.render_stateful_widget(player_list, tables[0], &mut player_list_state);
+                    frame.render_widget(table_player_stats, tables[1]);
+                    frame.render_widget(Tui::stylize_statusbar(statusbar_text), layout[1]);
+                })
+                .unwrap();
+
+            loop {
+                if let Event::Key(key) = read_event().unwrap() {
+                    match key.code {
+                        KeyCode::Char(ch) => match ch {
+                            'a' => return CharacterMenuAction::Add,
+                            'e' => {
+                                let input: usize = loop {
+                                    match Tui::get_input_string().parse() {
+                                        Ok(num) => break num,
+                                        Err(_) => Tui::err("Not a valid number"),
+                                    };
                                 };
-                            };
-                            return CharacterMenuAction::Edit(input);
-                        }
-                        'd' => {
-                            let input: usize = loop {
-                                match Tui::get_input_string().parse() {
-                                    Ok(num) => break num,
-                                    Err(_) => Tui::err("Not a valid number"),
+                                return CharacterMenuAction::Edit(input);
+                            }
+                            'd' => {
+                                let input: usize = loop {
+                                    match Tui::get_input_string().parse() {
+                                        Ok(num) => break num,
+                                        Err(_) => Tui::err("Not a valid number"),
+                                    };
                                 };
+                                return CharacterMenuAction::Delete(input);
+                            }
+                            'q' => return CharacterMenuAction::Quit,
+                            _ => (),
+                        },
+                        KeyCode::Down => {
+                            let i = match player_list_state.selected() {
+                                Some(i) => {
+                                    if i >= player_list_items.len() - 1 {
+                                        0
+                                    } else {
+                                        i + 1
+                                    }
+                                }
+                                None => 0,
                             };
-                            return CharacterMenuAction::Delete(input);
+                            player_list_state.select(Some(i));
+                            break;
                         }
-                        'q' => return CharacterMenuAction::Quit,
+                        KeyCode::Up => {
+                            let i = match player_list_state.selected() {
+                                Some(i) => {
+                                    if i == 0 {
+                                        player_list_items.len() - 1
+                                    } else {
+                                        i - 1
+                                    }
+                                }
+                                None => 0,
+                            };
+                            player_list_state.select(Some(i));
+                            break;
+                        }
                         _ => (),
                     }
                 }
