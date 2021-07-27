@@ -178,7 +178,7 @@ impl Tui {
         self.term
             .borrow_mut()
             .draw(|frame| {
-                let player_stats = self.print_player_stats(player);
+                let player_stats = Tui::print_player_stats(player);
                 let delimiter = Span::raw(" | ");
                 let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
                 let statusbar_text = Spans::from(vec![
@@ -246,7 +246,7 @@ impl Tui {
         };
     }
 
-    pub fn print_player_stats(&self, player: &Player) -> Vec<Spans> {
+    pub fn print_player_stats(player: &Player) -> Vec<Spans> {
         let mut out: Vec<Spans> = Vec::with_capacity(10);
         out.push(format!("Name: {}", player.name).into());
         out.push("Stats:".into());
@@ -467,17 +467,17 @@ impl Tui {
                         .split(layout[0]);
 
                     let player_list = List::new(player_list_items.clone())
-                        .block(Block::default().title("Players")
-                        .borders(Borders::ALL))
+                        .block(Block::default().title("Players").borders(Borders::ALL))
                         .highlight_symbol(">> ");
 
-                    let table_player_stats =
-                        Block::default().title("Player stats").borders(Borders::ALL);
+                    let player_stats = Paragraph::new(Tui::print_player_stats(
+                        &players[player_list_state.selected().unwrap()],
+                    ))
+                    .block(Block::default().title("Player stats").borders(Borders::ALL));
                     let statusbar_text = "Add: a, Edit: e, Delete: d, Quit: q";
 
-
                     frame.render_stateful_widget(player_list, tables[0], &mut player_list_state);
-                    frame.render_widget(table_player_stats, tables[1]);
+                    frame.render_widget(player_stats, tables[1]);
                     frame.render_widget(Tui::stylize_statusbar(statusbar_text), layout[1]);
                 })
                 .unwrap();
@@ -541,7 +541,6 @@ impl Tui {
                 }
             }
         }
-        */
     }
 
     pub fn edit_player(&mut self, player: Option<Player>) -> Player {
