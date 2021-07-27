@@ -508,12 +508,55 @@ impl Tui {
         mode: CharacterMenuMode,
         players: &mut Players,
     ) -> Option<CharacterMenuAction> {
+        #[derive(Copy, Clone)]
         enum AddModeCurrentField {
             Name,
             Stat(StatType),
             SkillName(usize),
             SkillCD(usize),
             Done,
+        }
+
+        impl AddModeCurrentField {
+            fn next(&self) -> AddModeCurrentField {
+                match self {
+                    AddModeCurrentField::Name => AddModeCurrentField::Stat(StatType::Strength),
+                    AddModeCurrentField::Stat(stat) => match stat {
+                        StatType::Strength => AddModeCurrentField::Stat(StatType::Dexterity),
+                        StatType::Dexterity => AddModeCurrentField::Stat(StatType::Poise),
+                        StatType::Poise => AddModeCurrentField::Stat(StatType::Wisdom),
+                        StatType::Wisdom => AddModeCurrentField::Stat(StatType::Intelligence),
+                        StatType::Intelligence => AddModeCurrentField::Stat(StatType::Charisma),
+                        StatType::Charisma => AddModeCurrentField::SkillName(0),
+                    },
+                    AddModeCurrentField::SkillName(i) => AddModeCurrentField::SkillCD(*i),
+                    AddModeCurrentField::SkillCD(i) => AddModeCurrentField::SkillName(*i + 1),
+                    AddModeCurrentField::Done => AddModeCurrentField::Done,
+                }
+            }
+
+            fn prev(&self) -> AddModeCurrentField {
+                match self {
+                    AddModeCurrentField::Name => AddModeCurrentField::Name,
+                    AddModeCurrentField::Stat(stat) => match stat {
+                        StatType::Strength => AddModeCurrentField::Name,
+                        StatType::Dexterity => AddModeCurrentField::Stat(StatType::Strength),
+                        StatType::Poise => AddModeCurrentField::Stat(StatType::Dexterity),
+                        StatType::Wisdom => AddModeCurrentField::Stat(StatType::Poise),
+                        StatType::Intelligence => AddModeCurrentField::Stat(StatType::Wisdom),
+                        StatType::Charisma => AddModeCurrentField::Stat(StatType::Intelligence),
+                    },
+                    AddModeCurrentField::SkillName(i) => {
+                        if *i == 0 {
+                            AddModeCurrentField::Stat(StatType::Charisma)
+                        } else {
+                            AddModeCurrentField::SkillCD(*i - 1)
+                        }
+                    }
+                    AddModeCurrentField::SkillCD(i) => AddModeCurrentField::SkillName(*i),
+                    AddModeCurrentField::Done => AddModeCurrentField::Done,
+                }
+            }
         }
 
         let mut add_mode_current_field: Option<AddModeCurrentField> = None;
@@ -532,30 +575,35 @@ impl Tui {
             if let CharacterMenuMode::Add = mode {
                 match add_mode_current_field.as_ref().unwrap() {
                     AddModeCurrentField::Name => {
+                        let buffer = add_mode_buffer.as_mut().unwrap();
+                        if buffer.is_empty() {
+                            *buffer = players.last_mut().unwrap().name.clone();
+                        }
                         players.last_mut().unwrap().name = add_mode_buffer.as_ref().unwrap().clone()
                     }
                     AddModeCurrentField::Stat(stat) => {
                         let buffer = add_mode_buffer.as_mut().unwrap();
-                        if buffer.is_empty() {
-                            *buffer = String::from("0");
-                        }
-                        match buffer.parse::<i64>() {
-                            Ok(num) => match stat {
+                        let current_stat = match stat {
                                 StatType::Strength => {
-                                    players.last_mut().unwrap().stats.strength = num
+                                    &mut players.last_mut().unwrap().stats.strength
                                 }
                                 StatType::Dexterity => {
-                                    players.last_mut().unwrap().stats.dexterity = num
+                                    &mut players.last_mut().unwrap().stats.dexterity
                                 }
-                                StatType::Poise => players.last_mut().unwrap().stats.poise = num,
-                                StatType::Wisdom => players.last_mut().unwrap().stats.wisdom = num,
+                                StatType::Poise => &mut players.last_mut().unwrap().stats.poise,
+                                StatType::Wisdom => &mut players.last_mut().unwrap().stats.wisdom,
                                 StatType::Intelligence => {
-                                    players.last_mut().unwrap().stats.intelligence = num
+                                    &mut players.last_mut().unwrap().stats.intelligence
                                 }
                                 StatType::Charisma => {
-                                    players.last_mut().unwrap().stats.charisma = num
+                                    &mut players.last_mut().unwrap().stats.charisma
                                 }
-                            },
+                        };
+                        if buffer.is_empty() {
+                            *buffer = current_stat.to_string();
+                        }
+                        match buffer.parse::<i64>() {
+                            Ok(num) => *current_stat = num,
                             Err(_) => errors
                                 .push(String::from(format!("Not a valid number(s): {}", buffer))),
                         }
@@ -567,21 +615,28 @@ impl Tui {
                         if let None = player.skills.get(*i) {
                             player.skills.push(Skill::default());
                         }
+                        let skill = &mut player.skills[*i];
 
-                        player.skills[*i].name = add_mode_buffer.as_ref().unwrap().clone();
+                        let buffer = add_mode_buffer.as_mut().unwrap();
+                        if buffer.is_empty() {
+                            *buffer = skill.name.clone();
+                        }
+
+                        skill.name = add_mode_buffer.as_ref().unwrap().clone();
                     }
                     AddModeCurrentField::SkillCD(i) => {
                         let player = players.last_mut().unwrap();
                         if let None = player.skills.get(*i) {
                             player.skills.push(Skill::default());
                         }
+                        let skill = &mut player.skills[*i];
 
                         let buffer = add_mode_buffer.as_mut().unwrap();
                         if buffer.is_empty() {
-                            *buffer = String::from("0");
+                            *buffer = skill.cooldown.to_string();
                         }
                         match buffer.parse::<u32>() {
-                            Ok(num) => player.skills[*i].cooldown = num,
+                            Ok(num) => skill.cooldown = num,
                             Err(_) => errors
                                 .push(String::from(format!("Not a valid number(s): {}", buffer))),
                         }
@@ -740,52 +795,34 @@ impl Tui {
                         KeyCode::Char(ch) => {
                             add_mode_buffer.as_mut().unwrap().push(ch);
                         }
+                        KeyCode::Up => {
+                            *add_mode_current_field.as_mut().unwrap() = add_mode_current_field.as_ref().unwrap().prev();
+                            add_mode_buffer.as_mut().unwrap().clear();
+                        }
+                        KeyCode::Down => {
+                            *add_mode_current_field.as_mut().unwrap() = add_mode_current_field.as_ref().unwrap().next();
+                            add_mode_buffer.as_mut().unwrap().clear();
+                        }
                         KeyCode::Backspace => {
                             add_mode_buffer.as_mut().unwrap().pop();
                         }
                         KeyCode::Enter => {
-                            *add_mode_current_field.as_mut().unwrap() =
-                                match add_mode_current_field.as_ref().unwrap() {
-                                    AddModeCurrentField::Name => {
-                                        AddModeCurrentField::Stat(StatType::Strength)
-                                    }
-                                    AddModeCurrentField::Stat(stat) => {
-                                        let buffer = add_mode_buffer.as_ref().unwrap();
-                                        match stat {
-                                            StatType::Strength => {
-                                                AddModeCurrentField::Stat(StatType::Dexterity)
-                                            }
-                                            StatType::Dexterity => {
-                                                AddModeCurrentField::Stat(StatType::Poise)
-                                            }
-                                            StatType::Poise => {
-                                                AddModeCurrentField::Stat(StatType::Wisdom)
-                                            }
-                                            StatType::Wisdom => {
-                                                AddModeCurrentField::Stat(StatType::Intelligence)
-                                            }
-                                            StatType::Intelligence => {
-                                                AddModeCurrentField::Stat(StatType::Charisma)
-                                            }
-                                            StatType::Charisma => AddModeCurrentField::SkillName(0),
-                                        }
-                                    }
-                                    AddModeCurrentField::SkillName(i) => {
-                                        if add_mode_buffer.as_ref().unwrap().is_empty() {
-                                            AddModeCurrentField::Done
-                                        } else {
-                                            AddModeCurrentField::SkillCD(*i)
-                                        }
-                                    }
-                                    AddModeCurrentField::SkillCD(i) => {
-                                        if !add_mode_buffer.as_ref().unwrap().is_empty() {
-                                            AddModeCurrentField::SkillName(*i + 1)
-                                        } else {
-                                            AddModeCurrentField::SkillCD(*i)
-                                        }
-                                    }
-                                    AddModeCurrentField::Done => AddModeCurrentField::Done,
-                                };
+                            let mut next = add_mode_current_field.as_ref().unwrap().next();
+                            let current = add_mode_current_field.as_mut().unwrap();
+
+                            // if pressed Enter with an empty buffer when adding skills - the last item
+                            if let AddModeCurrentField::SkillName(_) = current {
+                                if add_mode_buffer.as_ref().unwrap().is_empty() {
+                                    next = AddModeCurrentField::Done;
+                                }
+                            // don't assume a default skill cd, just don't do anything
+                            } else if let AddModeCurrentField::SkillCD(_) = current {
+                                if add_mode_buffer.as_ref().unwrap().is_empty() {
+                                    continue;
+                                }
+                            }
+
+                            *current = next;
                             add_mode_buffer.as_mut().unwrap().clear();
                         }
                         KeyCode::Esc => {

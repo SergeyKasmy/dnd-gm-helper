@@ -258,7 +258,8 @@ fn character_menu(term: &mut Tui, players: &mut Players) {
             }
             CharacterMenuAction::Edit(num) => {
                 let player_to_edit = players.remove(num);
-                players.insert(num, term.edit_player(Some(player_to_edit)));
+                todo!();
+                //players.insert(num, term.edit_player(Some(player_to_edit)));
             }
             CharacterMenuAction::Delete(num) => {
                 players.remove(num);
