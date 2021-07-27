@@ -637,7 +637,6 @@ impl Tui {
                     }
                     // TODO: make that look nicer
                     // currently a new skill just appears out of nowhere when you start typing
-                    // TODO: pop a skill when pressed Enter with an empty name
                     PlayerField::SkillName(i) => {
                         if let None = current_player.skills.get(*i) {
                             current_player.skills.push(Skill::default());
@@ -851,8 +850,15 @@ impl Tui {
                                 let current = add_mode_current_field.as_mut().unwrap();
 
                                 // if pressed Enter with an empty buffer when adding skills - the last item -> done
-                                if let PlayerField::SkillName(_) = current {
+                                if let PlayerField::SkillName(current_skill_num) = current {
                                     if add_mode_buffer.as_ref().unwrap().is_empty() {
+                                        // TODO: somehow avoid nest matching mode twice
+                                        let current_player_num = match mode {
+                                            CharacterMenuMode::Add => players.len() - 1,
+                                            CharacterMenuMode::Edit(num) => num,
+                                            _ => unreachable!(),
+                                        };
+                                        players[current_player_num].skills.remove(*current_skill_num);
                                         next = PlayerField::Done;
                                     }
                                 // don't assume a default skill cd, just don't do anything
