@@ -1,14 +1,8 @@
-// TMP
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_imports)]
-
 use crate::{Player, Players, Skill, Skills, StatType, Status, StatusCooldownType, StatusType};
 use crossterm::event::{read as read_event, Event, KeyCode};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use std::cell::RefCell;
 use std::io::{stdout, Stdout, Write};
-use std::collections::HashMap;
 use tui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -211,45 +205,182 @@ impl Tui {
         enable_raw_mode().unwrap();
     }
 
-    // TODO: doesn't yet work, do something about it
-    fn popup_with_options(&self, desc: &str, options: Vec<&str>) -> i32 {
-        self.term
-            .borrow_mut()
-            .draw(|frame| {
-                let layout_x = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints(
-                        [
-                            Constraint::Min(1),
-                            Constraint::Length(7),
-                            Constraint::Min(1),
-                        ]
-                        .as_ref(),
-                    )
-                    .split(frame.size());
+    fn popup_with_options(&self, desc: &str, options: Vec<&str>) -> usize {
+        let width = {
+            let desc_width = desc.len() as u16 + 4;
+            let button_width = {
+                let mut tmp = 0;
+                for option in options.iter() {
+                    tmp += option.chars().count() as u16;
+                }
 
-                let layout = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints(
-                        [
-                            Constraint::Min(1),
-                            Constraint::Length((desc.len() + 4) as u16),
-                            Constraint::Min(1),
-                        ]
-                        .as_ref(),
-                    )
-                    .split(layout_x[1])[1];
+                tmp += 4;
+                tmp
+            };
 
-                eprintln!("{:#?}\n{:#?}", layout_x, layout);
+            if desc_width > button_width {
+                desc_width
+            } else {
+                button_width
+            }
+        };
+        let height = 7;
 
-                let block = Block::default().borders(Borders::ALL);
+        let mut currently_selected: usize = 0;
+        loop {
+            self.term
+                .borrow_mut()
+                .draw(|frame| {
+                    // Hopefully len() won't be too fucking long pls
+                    // the +4 is 2 borders and 2 margins
 
-                frame.render_widget(block, layout);
-            })
-            .unwrap();
+                    let block_rect = {
+                        let offset_x = (frame.size().width - width) / 2;
+                        let offset_y = (frame.size().height - height) / 2;
 
-        read_event().unwrap();
-        0
+                        let layout_x = Layout::default()
+                            .direction(Direction::Vertical)
+                            .constraints(
+                                [
+                                    Constraint::Length(offset_y),
+                                    Constraint::Length(height),
+                                    Constraint::Length(offset_y),
+                                ]
+                                .as_ref(),
+                            )
+                            .split(frame.size());
+
+                        Layout::default()
+                            .direction(Direction::Horizontal)
+                            .constraints(
+                                [
+                                    Constraint::Length(offset_x),
+                                    Constraint::Length(width),
+                                    Constraint::Length(offset_x),
+                                ]
+                                .as_ref(),
+                            )
+                            .split(layout_x[1])[1]
+                    };
+
+                    let (text_rect, buttons_rect) = {
+                        let layout_x = Layout::default()
+                            .direction(Direction::Vertical)
+                            .constraints(
+                                [
+                                    Constraint::Length(2), // border + space
+                                    Constraint::Length(1), // the text
+                                    Constraint::Length(1), // space
+                                    Constraint::Length(1), // buttons
+                                    Constraint::Length(2), // space + border
+                                ]
+                                .as_ref(),
+                            )
+                            .split(block_rect);
+
+                        (
+                            Layout::default()
+                                .direction(Direction::Horizontal)
+                                .constraints(
+                                    [
+                                        Constraint::Length(2),
+                                        Constraint::Length(width - 4),
+                                        Constraint::Length(2),
+                                    ]
+                                    .as_ref(),
+                                )
+                                .split(layout_x[1])[1],
+                            Layout::default()
+                                .direction(Direction::Horizontal)
+                                .constraints(
+                                    [
+                                        Constraint::Length(2),
+                                        Constraint::Length(width - 4),
+                                        Constraint::Length(2),
+                                    ]
+                                    .as_ref(),
+                                )
+                                .split(layout_x[3])[1],
+                        )
+                    };
+
+                    let block = Block::default().borders(Borders::ALL);
+                    let paragraph = Paragraph::new(desc).alignment(Alignment::Center);
+                    frame.render_widget(block.clone(), block_rect);
+                    frame.render_widget(paragraph, text_rect);
+
+                    {
+                        const OFFSET_BETWEEN_BUTTONS: u16 = 3;
+                        let buttons_rect = {
+                            let offset = {
+                                let mut tmp = buttons_rect.width;
+                                for option in options.iter() {
+                                    tmp -= option.chars().count() as u16;
+                                }
+                                // if more than out button, substract spacing between them
+                                if options.len() > 1 {
+                                    tmp -= OFFSET_BETWEEN_BUTTONS * (options.len() as u16 - 1);
+                                }
+                                tmp /= 2;
+
+                                tmp
+                            };
+
+                            let mut tmp = buttons_rect;
+                            tmp.x += offset;
+                            tmp
+                        };
+
+                        for (i, option) in options.iter().enumerate() {
+                            let button_style = if i == currently_selected {
+                                Style::default().bg(Color::White).fg(Color::Black)
+                            } else {
+                                Style::default()
+                            };
+
+                            let button = Paragraph::new(*option).style(button_style);
+
+                            let rect = {
+                                let mut tmp = buttons_rect;
+                                tmp.width = option.chars().count() as u16;
+                                if i > 0 {
+                                    tmp.x += options[i - 1].len() as u16;
+                                    tmp.x += OFFSET_BETWEEN_BUTTONS;
+                                }
+
+                                tmp
+                            };
+
+                            frame.render_widget(button, rect);
+                        }
+                    }
+                })
+                .unwrap();
+
+            match read_event().unwrap() {
+                Event::Key(key) => match key.code {
+                    KeyCode::Enter => {
+                        return currently_selected;
+                    }
+                    KeyCode::Right => {
+                        if currently_selected > options.len() - 1 {
+                            currently_selected = 0;
+                        } else {
+                            currently_selected += 1;
+                        }
+                    }
+                    KeyCode::Left => {
+                        if currently_selected == 0 {
+                            currently_selected = options.len() - 1;
+                        } else {
+                            currently_selected -= 1;
+                        }
+                    }
+                    _ => (),
+                }
+                _ => (),
+            }
+        }
     }
 
     pub fn draw_main_menu(&mut self) -> MainMenuAction {
@@ -365,51 +496,115 @@ impl Tui {
 
     fn player_stats_table(player: &Player, selected: Option<PlayerField>) -> impl Widget + '_ {
         let selected_style = Style::default().bg(Color::White).fg(Color::Black);
-        // 8 = name, 6 stats, money. skills may not exist
-        //let styles: HashMap<PlayerField, Style> = HashMap::with_capacity(8);
         let mut rows = vec![
-            Row::new(["Name", player.name.as_str()]).style(if let Some(PlayerField::Name) = selected { selected_style.clone() } else { Style::default() } ),
+            Row::new(["Name", player.name.as_str()]).style(
+                if let Some(PlayerField::Name) = selected {
+                    selected_style.clone()
+                } else {
+                    Style::default()
+                },
+            ),
             Row::new(["Stats"]),
             // TODO: mb use a slice instead
             Row::new::<Vec<Cell>>(vec![
                 "Strength".into(),
                 player.stats.strength.to_string().into(),
-            ]).style(if let Some(PlayerField::Stat(StatType::Strength)) = selected { selected_style.clone() } else { Style::default() } ),
+            ])
+            .style(
+                if let Some(PlayerField::Stat(StatType::Strength)) = selected {
+                    selected_style.clone()
+                } else {
+                    Style::default()
+                },
+            ),
             Row::new::<Vec<Cell>>(vec![
                 "Dexterity".into(),
                 player.stats.dexterity.to_string().into(),
-            ]).style(if let Some(PlayerField::Stat(StatType::Dexterity)) = selected { selected_style.clone() } else { Style::default() } ),
-            Row::new::<Vec<Cell>>(vec!["Poise".into(), player.stats.poise.to_string().into()]).style(if let Some(PlayerField::Stat(StatType::Poise)) = selected { selected_style.clone() } else { Style::default() } ),
+            ])
+            .style(
+                if let Some(PlayerField::Stat(StatType::Dexterity)) = selected {
+                    selected_style.clone()
+                } else {
+                    Style::default()
+                },
+            ),
+            Row::new::<Vec<Cell>>(vec!["Poise".into(), player.stats.poise.to_string().into()])
+                .style(if let Some(PlayerField::Stat(StatType::Poise)) = selected {
+                    selected_style.clone()
+                } else {
+                    Style::default()
+                }),
             Row::new::<Vec<Cell>>(vec![
                 "Wisdom".into(),
                 player.stats.wisdom.to_string().into(),
-            ]).style(if let Some(PlayerField::Stat(StatType::Wisdom)) = selected { selected_style.clone() } else { Style::default() } ),
+            ])
+            .style(
+                if let Some(PlayerField::Stat(StatType::Wisdom)) = selected {
+                    selected_style.clone()
+                } else {
+                    Style::default()
+                },
+            ),
             Row::new::<Vec<Cell>>(vec![
                 "Intelligence".into(),
                 player.stats.intelligence.to_string().into(),
-            ]).style(if let Some(PlayerField::Stat(StatType::Intelligence)) = selected { selected_style.clone() } else { Style::default() } ),
+            ])
+            .style(
+                if let Some(PlayerField::Stat(StatType::Intelligence)) = selected {
+                    selected_style.clone()
+                } else {
+                    Style::default()
+                },
+            ),
             Row::new::<Vec<Cell>>(vec![
                 "Charisma".into(),
                 player.stats.charisma.to_string().into(),
-            ]).style(if let Some(PlayerField::Stat(StatType::Charisma)) = selected { selected_style.clone() } else { Style::default() } ),
+            ])
+            .style(
+                if let Some(PlayerField::Stat(StatType::Charisma)) = selected {
+                    selected_style.clone()
+                } else {
+                    Style::default()
+                },
+            ),
             Row::new(["Skills"]),
         ];
 
         for (i, skill) in player.skills.iter().enumerate() {
-            rows.push(Row::new::<Vec<Cell>>(vec![
-                "Name".into(),
-                skill.name.as_str().into(),
-                "CD".into(),
-                skill.cooldown.to_string().into(),
-                "Available after".into(),
-                skill.available_after.to_string().into(),
-            ]).style(if let Some(PlayerField::SkillName(i)) | Some(PlayerField::SkillCD(i)) = selected { selected_style.clone() } else { Style::default() } ));
+            rows.push(
+                Row::new::<Vec<Cell>>(vec![
+                    "Name".into(),
+                    skill.name.as_str().into(),
+                    "CD".into(),
+                    skill.cooldown.to_string().into(),
+                    "Available after".into(),
+                    skill.available_after.to_string().into(),
+                ])
+                .style(
+                    if let Some(PlayerField::SkillName(current_skill_num))
+                    | Some(PlayerField::SkillCD(current_skill_num)) = selected
+                    {
+                        if current_skill_num == i {
+                            selected_style.clone()
+                        } else {
+                            Style::default()
+                        }
+                    } else {
+                        Style::default()
+                    },
+                ),
+            );
         }
 
-        rows.push(Row::new::<Vec<Cell>>(vec![
-            "Money".into(),
-            player.money.to_string().into(),
-        ]).style(if let Some(PlayerField::Money) = selected { selected_style.clone() } else { Style::default() } ));
+        rows.push(
+            Row::new::<Vec<Cell>>(vec!["Money".into(), player.money.to_string().into()]).style(
+                if let Some(PlayerField::Money) = selected {
+                    selected_style.clone()
+                } else {
+                    Style::default()
+                },
+            ),
+        );
 
         Table::new(rows).widths(
             [
@@ -858,7 +1053,9 @@ impl Tui {
                                             CharacterMenuMode::Edit(num) => num,
                                             _ => unreachable!(),
                                         };
-                                        players[current_player_num].skills.remove(*current_skill_num);
+                                        players[current_player_num]
+                                            .skills
+                                            .remove(*current_skill_num);
                                         next = PlayerField::Done;
                                     }
                                 // don't assume a default skill cd, just don't do anything

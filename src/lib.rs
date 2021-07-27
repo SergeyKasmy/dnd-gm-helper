@@ -44,6 +44,7 @@ pub struct Skill {
 }
 
 impl Skill {
+    #[allow(dead_code)]
     fn new(name: String, cooldown: u32) -> Skill {
         Skill {
             name,
