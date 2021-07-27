@@ -605,8 +605,10 @@ impl Tui {
                         }
                         match add_mode_buffer.as_ref().unwrap().parse::<i64>() {
                             Ok(num) => *current_stat = num,
-                            Err(_) => errors
-                                .push(String::from(format!("Not a valid number(s): {}", add_mode_buffer.as_ref().unwrap()))),
+                            Err(_) => errors.push(String::from(format!(
+                                "Not a valid number(s): {}",
+                                add_mode_buffer.as_ref().unwrap()
+                            ))),
                         }
                     }
                     // TODO: make that look nicer
@@ -636,8 +638,10 @@ impl Tui {
                         }
                         match add_mode_buffer.as_ref().unwrap().parse::<u32>() {
                             Ok(num) => skill.cooldown = num,
-                            Err(_) => errors
-                                .push(String::from(format!("Not a valid number(s): {}", add_mode_buffer.as_ref().unwrap()))),
+                            Err(_) => errors.push(String::from(format!(
+                                "Not a valid number(s): {}",
+                                add_mode_buffer.as_ref().unwrap()
+                            ))),
                         }
                     }
                     AddModeCurrentField::Done => return None,
@@ -650,23 +654,25 @@ impl Tui {
             }
 
             // default currently selected entry for each mode
-            match mode {
+            player_list_state.select(match mode {
                 CharacterMenuMode::View(i) => {
                     // select the first entry if the list isn't empty
                     if player_list_items.len() > 0 {
                         if let None = player_list_state.selected() {
-                            player_list_state.select(Some(i));
+                            Some(i)
+                        } else {
+                            player_list_state.selected()
                         }
+                    } else {
+                        player_list_state.selected()
                     }
                 }
                 CharacterMenuMode::Add => {
                     // always select the last/currenty in process of adding entry
-                    player_list_state.select(Some(player_list_items.len() - 1));
+                    Some(player_list_items.len() - 1)
                 }
-                CharacterMenuMode::Edit(i) => {
-                    player_list_state.select(Some(i));
-                }
-            }
+                CharacterMenuMode::Edit(i) => Some(i),
+            });
 
             self.term
                 .borrow_mut()
@@ -705,10 +711,10 @@ impl Tui {
                                 ])
                             }
                             CharacterMenuMode::Add => {
-                                Spans::from("Add mode. Press ESC to quit")
+                                Spans::from("Add mode. Press Enter, Up, or down arrows to navigate | ESC to quit")
                             }
                             CharacterMenuMode::Edit(_) => {
-                                Spans::from("Edit mode. Press ESC to quit")
+                                Spans::from("Edit mode. Press Up or down arrows to navigate | Enter or ESC to quit")
                             }
                         };
                         frame.render_widget(
