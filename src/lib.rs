@@ -263,8 +263,10 @@ fn character_menu(term: &mut Tui, players: &mut Players) {
                 last_selected = num;
             }
             CharacterMenuAction::Delete(num) => {
-                players.remove(num);
-                last_selected = num - 1;
+                if term.messagebox_yn("Are you sure?") {
+                    players.remove(num);
+                    last_selected = num - 1;
+                }
             }
             CharacterMenuAction::Quit => break,
         }

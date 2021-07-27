@@ -205,7 +205,7 @@ impl Tui {
         enable_raw_mode().unwrap();
     }
 
-    fn messagebox_with_options(&self, desc: &str, options: Vec<&str>) -> usize {
+    pub fn messagebox_with_options(&self, desc: &str, options: Vec<&str>) -> usize {
         let width = {
             let desc_width = desc.len() as u16 + 4;
             let button_width = {
@@ -383,14 +383,14 @@ impl Tui {
         }
     }
 
-    fn messagebox_yn(&self, desc: &str) -> bool {
+    pub fn messagebox_yn(&self, desc: &str) -> bool {
         match self.messagebox_with_options(desc, vec!["Yes", "No"]) {
             0 => true,
             _ => false,
         }
     }
 
-    fn messagebox(&self, desc: &str) {
+    pub fn messagebox(&self, desc: &str) {
         self.messagebox_with_options(desc, vec!["OK"]);
     }
 
