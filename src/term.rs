@@ -570,7 +570,6 @@ impl Tui {
             }
 
             add_mode_current_field = Some(AddModeCurrentField::Name);
-            add_mode_buffer = Some(String::new());
         }
 
         let mut errors: Vec<String> = Vec::new();
@@ -583,15 +582,14 @@ impl Tui {
                 } else {
                     players.get_mut(i).unwrap()
                 };
-                let buffer = add_mode_buffer.as_mut().unwrap();
 
                 match add_mode_current_field.as_ref().unwrap() {
                     AddModeCurrentField::Name => {
                         // TODO: don't copy twice stupid
-                        if buffer.is_empty() {
-                            *buffer = current_player.name.clone();
+                        if let None = add_mode_buffer {
+                            add_mode_buffer = Some(current_player.name.clone());
                         }
-                        current_player.name = buffer.clone()
+                        current_player.name = add_mode_buffer.as_ref().unwrap().clone()
                     }
                     AddModeCurrentField::Stat(stat) => {
                         let current_stat = match stat {
@@ -602,13 +600,13 @@ impl Tui {
                             StatType::Intelligence => &mut current_player.stats.intelligence,
                             StatType::Charisma => &mut current_player.stats.charisma,
                         };
-                        if buffer.is_empty() {
-                            *buffer = current_stat.to_string();
+                        if let None = add_mode_buffer {
+                            add_mode_buffer = Some(current_stat.to_string());
                         }
-                        match buffer.parse::<i64>() {
+                        match add_mode_buffer.as_ref().unwrap().parse::<i64>() {
                             Ok(num) => *current_stat = num,
                             Err(_) => errors
-                                .push(String::from(format!("Not a valid number(s): {}", buffer))),
+                                .push(String::from(format!("Not a valid number(s): {}", add_mode_buffer.as_ref().unwrap()))),
                         }
                     }
                     // TODO: make that look nicer
@@ -620,12 +618,11 @@ impl Tui {
                         }
                         let skill = &mut current_player.skills[*i];
 
-                        // TODO: actually doesn't work in edit mode if you erase everything F
-                        if buffer.is_empty() {
-                            *buffer = skill.name.clone();
+                        if let None = add_mode_buffer {
+                            add_mode_buffer = Some(skill.name.clone());
                         }
 
-                        skill.name = buffer.clone();
+                        skill.name = add_mode_buffer.as_ref().unwrap().clone();
                     }
                     AddModeCurrentField::SkillCD(i) => {
                         if let None = current_player.skills.get(*i) {
@@ -633,13 +630,14 @@ impl Tui {
                         }
                         let skill = &mut current_player.skills[*i];
 
-                        if buffer.is_empty() {
-                            *buffer = skill.cooldown.to_string();
+                        if let None = add_mode_buffer {
+                            *add_mode_buffer.as_mut().unwrap() = skill.cooldown.to_string();
+                            add_mode_buffer = Some(skill.cooldown.to_string());
                         }
-                        match buffer.parse::<u32>() {
+                        match add_mode_buffer.as_ref().unwrap().parse::<u32>() {
                             Ok(num) => skill.cooldown = num,
                             Err(_) => errors
-                                .push(String::from(format!("Not a valid number(s): {}", buffer))),
+                                .push(String::from(format!("Not a valid number(s): {}", add_mode_buffer.as_ref().unwrap()))),
                         }
                     }
                     AddModeCurrentField::Done => return None,
@@ -689,10 +687,9 @@ impl Tui {
                     let delimiter = Span::raw(" | ");
 
                     if errors.is_empty() {
-                        let statusbar_text;
-                        match mode {
+                        let statusbar_text = match mode {
                             CharacterMenuMode::View(_) => {
-                                statusbar_text = Spans::from(vec![
+                                Spans::from(vec![
                                     " ".into(),
                                     Span::styled("A", style_underlined),
                                     "dd".into(),
@@ -705,15 +702,15 @@ impl Tui {
                                     delimiter.clone(),
                                     Span::styled("Q", style_underlined),
                                     "uit".into(),
-                                ]);
+                                ])
                             }
                             CharacterMenuMode::Add => {
-                                statusbar_text = Spans::from("Add mode. Press ESC to quit");
+                                Spans::from("Add mode. Press ESC to quit")
                             }
                             CharacterMenuMode::Edit(_) => {
-                                statusbar_text = Spans::from("Edit mode. Press ESC to quit");
+                                Spans::from("Edit mode. Press ESC to quit")
                             }
-                        }
+                        };
                         frame.render_widget(
                             Tui::stylize_statusbar(statusbar_text, StatusBarType::Normal),
                             layout[1],
@@ -796,17 +793,20 @@ impl Tui {
                     },
                     CharacterMenuMode::Add | CharacterMenuMode::Edit(_) => match key.code {
                         KeyCode::Char(ch) => {
+                            if let None = add_mode_buffer {
+                                add_mode_buffer = Some(String::new());
+                            }
                             add_mode_buffer.as_mut().unwrap().push(ch);
                         }
                         KeyCode::Up => {
                             *add_mode_current_field.as_mut().unwrap() =
                                 add_mode_current_field.as_ref().unwrap().prev();
-                            add_mode_buffer.as_mut().unwrap().clear();
+                            add_mode_buffer = None;
                         }
                         KeyCode::Down => {
                             *add_mode_current_field.as_mut().unwrap() =
                                 add_mode_current_field.as_ref().unwrap().next();
-                            add_mode_buffer.as_mut().unwrap().clear();
+                            add_mode_buffer = None;
                         }
                         KeyCode::Backspace => {
                             add_mode_buffer.as_mut().unwrap().pop();
@@ -829,7 +829,7 @@ impl Tui {
                                 }
 
                                 *current = next;
-                                add_mode_buffer.as_mut().unwrap().clear();
+                                add_mode_buffer = None;
                             } else if let CharacterMenuMode::Edit(_) = mode {
                                 return None;
                             }
