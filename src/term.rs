@@ -205,7 +205,7 @@ impl Tui {
         enable_raw_mode().unwrap();
     }
 
-    fn popup_with_options(&self, desc: &str, options: Vec<&str>) -> usize {
+    fn messagebox_with_options(&self, desc: &str, options: Vec<&str>) -> usize {
         let width = {
             let desc_width = desc.len() as u16 + 4;
             let button_width = {
@@ -377,43 +377,68 @@ impl Tui {
                         }
                     }
                     _ => (),
-                }
+                },
                 _ => (),
             }
         }
     }
 
+    fn messagebox_yn(&self, desc: &str) -> bool {
+        match self.messagebox_with_options(desc, vec!["Yes", "No"]) {
+            0 => true,
+            _ => false,
+        }
+    }
+
+    fn messagebox(&self, desc: &str) {
+        self.messagebox_with_options(desc, vec!["OK"]);
+    }
+
     pub fn draw_main_menu(&mut self) -> MainMenuAction {
-        let items = [
-            ListItem::new("1. Start game"),
-            ListItem::new("2. Manage characters"),
-            ListItem::new("3. Save and quit"),
-        ];
-        let list = List::new(items);
-
         self.term.borrow_mut().clear().unwrap();
-        self.term
-            .borrow_mut()
-            .draw(|frame| {
-                let layout = self.get_window_size(frame.size());
-
-                frame.render_widget(list, layout[0]);
-                frame.render_widget(
-                    Tui::stylize_statusbar(
-                        format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION")),
-                        StatusBarType::Normal,
-                    ),
-                    layout[1],
-                );
-            })
-            .unwrap();
-
         loop {
-            match Tui::get_input_char() {
-                '1' => return MainMenuAction::Play,
-                '2' => return MainMenuAction::Edit,
-                // TODO: handle ESC
-                '3' | 'q' => return MainMenuAction::Quit,
+            self.term
+                .borrow_mut()
+                .draw(|frame| {
+                    let layout = self.get_window_size(frame.size());
+
+                    let items = [
+                        ListItem::new("1. Start game"),
+                        ListItem::new("2. Manage characters"),
+                        ListItem::new("3. Save and quit"),
+                    ];
+                    let list = List::new(items);
+
+                    frame.render_widget(list, layout[0]);
+                    frame.render_widget(
+                        Tui::stylize_statusbar(
+                            format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION")),
+                            StatusBarType::Normal,
+                        ),
+                        layout[1],
+                    );
+                })
+                .unwrap();
+
+            match read_event().unwrap() {
+                Event::Key(key) => match key.code {
+                    KeyCode::Esc => {
+                        if self.messagebox_yn("Are you sure you want to quit?") {
+                            return MainMenuAction::Quit;
+                        }
+                    }
+                    KeyCode::Char(ch) => match ch {
+                        '1' => return MainMenuAction::Play,
+                        '2' => return MainMenuAction::Edit,
+                        '3' | 'q' => {
+                            if self.messagebox_yn("Are you sure you want to quit?") {
+                                return MainMenuAction::Quit;
+                            }
+                        }
+                        _ => (),
+                    },
+                    _ => (),
+                },
                 _ => (),
             }
         }
