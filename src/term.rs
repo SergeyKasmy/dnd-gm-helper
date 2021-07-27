@@ -3,7 +3,7 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
 
-use crate::{Player, Players, Skill, Skills, Status, StatusCooldownType, StatusType};
+use crate::{Player, Players, Skill, Skills, StatType, Status, StatusCooldownType, StatusType};
 use crossterm::event::{read as read_event, Event, KeyCode};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use std::cell::RefCell;
@@ -13,7 +13,7 @@ use tui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans, Text},
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Widget},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Widget},
     Terminal,
 };
 
@@ -46,6 +46,17 @@ pub enum CharacterMenuAction {
     Quit,
 }
 
+pub enum CharacterMenuMode {
+    View,
+    Add,
+    Edit,
+}
+
+enum StatusBarType {
+    Normal,
+    Error,
+}
+
 pub struct Tui {
     term: RefCell<Term>,
 }
@@ -66,8 +77,12 @@ impl Tui {
             .split(window)
     }
 
-    fn stylize_statusbar<'a, T: Into<Text<'a>>>(text: T) -> Paragraph<'a> {
-        Paragraph::new(text.into()).style(Style::default().bg(Color::Cyan).fg(Color::Black))
+    fn stylize_statusbar<'a, T: Into<Text<'a>>>(text: T, sbtype: StatusBarType) -> Paragraph<'a> {
+        let style = match sbtype {
+            StatusBarType::Normal => Style::default().bg(Color::Cyan).fg(Color::Black),
+            StatusBarType::Error => Style::default().bg(Color::Red).fg(Color::White),
+        };
+        Paragraph::new(text.into()).style(style)
     }
 
     fn get_input_char() -> char {
@@ -137,18 +152,54 @@ impl Tui {
         enable_raw_mode().unwrap();
     }
 
+    // TODO: doesn't yet work, do something about it
+    fn popup_with_options(&self, desc: &str, options: Vec<&str>) -> i32 {
+        self.term
+            .borrow_mut()
+            .draw(|frame| {
+                let layout_x = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints(
+                        [
+                            Constraint::Min(1),
+                            Constraint::Length(7),
+                            Constraint::Min(1),
+                        ]
+                        .as_ref(),
+                    )
+                    .split(frame.size());
+
+                let layout = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints(
+                        [
+                            Constraint::Min(1),
+                            Constraint::Length((desc.len() + 4) as u16),
+                            Constraint::Min(1),
+                        ]
+                        .as_ref(),
+                    )
+                    .split(layout_x[1])[1];
+
+                eprintln!("{:#?}\n{:#?}", layout_x, layout);
+
+                let block = Block::default().borders(Borders::ALL);
+
+                frame.render_widget(block, layout);
+            })
+            .unwrap();
+
+        read_event().unwrap();
+        0
+    }
+
     pub fn draw_main_menu(&mut self) -> MainMenuAction {
         let items = [
             ListItem::new("1. Start game"),
             ListItem::new("2. Manage characters"),
-            ListItem::new("3. Exit"),
+            ListItem::new("3. Save and quit"),
         ];
         let list = List::new(items);
-        /*
-        self.draw(
-            vec![list],
-        );
-        */
 
         self.term.borrow_mut().clear().unwrap();
         self.term
@@ -158,7 +209,10 @@ impl Tui {
 
                 frame.render_widget(list, layout[0]);
                 frame.render_widget(
-                    Tui::stylize_statusbar(format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION"))),
+                    Tui::stylize_statusbar(
+                        format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION")),
+                        StatusBarType::Normal,
+                    ),
                     layout[1],
                 );
             })
@@ -168,6 +222,7 @@ impl Tui {
             match Tui::get_input_char() {
                 '1' => return MainMenuAction::Play,
                 '2' => return MainMenuAction::Edit,
+                // TODO: handle ESC
                 '3' | 'q' => return MainMenuAction::Quit,
                 _ => (),
             }
@@ -224,7 +279,10 @@ impl Tui {
                 let layout = self.get_window_size(frame.size());
 
                 frame.render_widget(Paragraph::new(player_stats), layout[0]);
-                frame.render_widget(Tui::stylize_statusbar(statusbar_text), layout[1]);
+                frame.render_widget(
+                    Tui::stylize_statusbar(statusbar_text, StatusBarType::Normal),
+                    layout[1],
+                );
             })
             .unwrap();
 
@@ -445,16 +503,117 @@ impl Tui {
         }
     }
 
-    pub fn draw_character_menu(&mut self, players: &Players) -> CharacterMenuAction {
-        let mut player_list_items = Vec::new();
-        let mut player_list_state = ListState::default();
-        player_list_state.select(Some(0));
-
-        for player in players {
-            player_list_items.push(ListItem::new(player.name.clone()));
+    pub fn draw_character_menu(
+        &mut self,
+        mode: CharacterMenuMode,
+        players: &mut Players,
+    ) -> Option<CharacterMenuAction> {
+        enum AddModeCurrentField {
+            Name,
+            Stat(StatType),
+            SkillName(usize),
+            SkillCD(usize),
+            Done,
         }
 
+        let mut add_mode_current_field: Option<AddModeCurrentField> = None;
+        let mut add_mode_buffer: Option<String> = None;
+
+        if let CharacterMenuMode::Add = mode {
+            // add an empty entry we are going to modify next
+            players.push(Player::default());
+            add_mode_current_field = Some(AddModeCurrentField::Name);
+            add_mode_buffer = Some(String::new());
+        }
+
+        let mut errors: Vec<String> = Vec::new();
+        let mut player_list_state = ListState::default();
         loop {
+            if let CharacterMenuMode::Add = mode {
+                match add_mode_current_field.as_ref().unwrap() {
+                    AddModeCurrentField::Name => {
+                        players.last_mut().unwrap().name = add_mode_buffer.as_ref().unwrap().clone()
+                    }
+                    AddModeCurrentField::Stat(stat) => {
+                        let buffer = add_mode_buffer.as_mut().unwrap();
+                        if buffer.is_empty() {
+                            *buffer = String::from("0");
+                        }
+                        match buffer.parse::<i64>() {
+                            Ok(num) => match stat {
+                                StatType::Strength => {
+                                    players.last_mut().unwrap().stats.strength = num
+                                }
+                                StatType::Dexterity => {
+                                    players.last_mut().unwrap().stats.dexterity = num
+                                }
+                                StatType::Poise => players.last_mut().unwrap().stats.poise = num,
+                                StatType::Wisdom => players.last_mut().unwrap().stats.wisdom = num,
+                                StatType::Intelligence => {
+                                    players.last_mut().unwrap().stats.intelligence = num
+                                }
+                                StatType::Charisma => {
+                                    players.last_mut().unwrap().stats.charisma = num
+                                }
+                            },
+                            Err(_) => errors
+                                .push(String::from(format!("Not a valid number(s): {}", buffer))),
+                        }
+                    }
+                    // TODO: make that look nicer
+                    // currently a new skill just appears out of nowhere when you start typing
+                    AddModeCurrentField::SkillName(i) => {
+                        let player = players.last_mut().unwrap();
+                        if let None = player.skills.get(*i) {
+                            player.skills.push(Skill::default());
+                        }
+
+                        player.skills[*i].name = add_mode_buffer.as_ref().unwrap().clone();
+                    }
+                    AddModeCurrentField::SkillCD(i) => {
+                        let player = players.last_mut().unwrap();
+                        if let None = player.skills.get(*i) {
+                            player.skills.push(Skill::default());
+                        }
+
+                        let buffer = add_mode_buffer.as_mut().unwrap();
+                        if buffer.is_empty() {
+                            *buffer = String::from("0");
+                        }
+                        match buffer.parse::<u32>() {
+                            Ok(num) => player.skills[*i].cooldown = num,
+                            Err(_) => errors
+                                .push(String::from(format!("Not a valid number(s): {}", buffer))),
+                        }
+                    }
+                    AddModeCurrentField::Done => return None,
+                }
+            }
+
+            let mut player_list_items = Vec::new();
+            for player in players.iter() {
+                player_list_items.push(ListItem::new(player.name.clone()));
+            }
+
+            // default currently selected entry for each mode
+            match mode {
+                CharacterMenuMode::View => {
+                    // select the first entry if the list isn't empty
+                    if player_list_items.len() > 0 {
+                        if let None = player_list_state.selected() {
+                            player_list_state.select(Some(0));
+                        }
+                    }
+                }
+                CharacterMenuMode::Add => {
+                    // always select the last/currenty in process of adding entry
+                    player_list_state.select(Some(player_list_items.len() - 1));
+                }
+                CharacterMenuMode::Edit => {
+                    todo!();
+                }
+            }
+
             self.term
                 .borrow_mut()
                 .draw(|frame| {
@@ -470,192 +629,176 @@ impl Tui {
                         .block(Block::default().title("Players").borders(Borders::ALL))
                         .highlight_symbol(">> ");
 
-                    let player_stats = Paragraph::new(Tui::print_player_stats(
-                        &players[player_list_state.selected().unwrap()],
-                    ))
-                    .block(Block::default().title("Player stats").borders(Borders::ALL));
-                    let statusbar_text = "Add: a, Edit: e, Delete: d, Quit: q";
                     let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
                     let delimiter = Span::raw(" | ");
 
-                    let statusbar_text = Spans::from(vec![
-                        Span::styled("A", style_underlined),
-                        "dd".into(),
-                        delimiter.clone(),
-                        Span::styled("E", style_underlined),
-                        "dit".into(),
-                        delimiter.clone(),
-                        Span::styled("D", style_underlined),
-                        "elete".into(),
-                        delimiter.clone(),
-                        Span::styled("Q", style_underlined),
-                        "uit".into(),
-                    ]);
+                    if errors.is_empty() {
+                        let statusbar_text;
+                        match mode {
+                            CharacterMenuMode::View => {
+                                statusbar_text = Spans::from(vec![
+                                    " ".into(),
+                                    Span::styled("A", style_underlined),
+                                    "dd".into(),
+                                    delimiter.clone(),
+                                    Span::styled("E", style_underlined),
+                                    "dit".into(),
+                                    delimiter.clone(),
+                                    Span::styled("D", style_underlined),
+                                    "elete".into(),
+                                    delimiter.clone(),
+                                    Span::styled("Q", style_underlined),
+                                    "uit".into(),
+                                ]);
+                            }
+                            CharacterMenuMode::Add => {
+                                statusbar_text = Spans::from("Add mode. Press ESC to quit");
+                            }
+                            CharacterMenuMode::Edit => todo!(),
+                        }
+                        frame.render_widget(
+                            Tui::stylize_statusbar(statusbar_text, StatusBarType::Normal),
+                            layout[1],
+                        );
+                    } else {
+                        frame.render_widget(
+                            Tui::stylize_statusbar(errors.pop().unwrap(), StatusBarType::Error),
+                            layout[1],
+                        );
+                    }
 
                     frame.render_stateful_widget(player_list, tables[0], &mut player_list_state);
-                    frame.render_widget(player_stats, tables[1]);
-                    frame.render_widget(Tui::stylize_statusbar(statusbar_text), layout[1]);
+
+                    if let Some(num) = player_list_state.selected() {
+                        let paragraph = Paragraph::new(Tui::print_player_stats(&players[num]))
+                            .block(Block::default().title("Player stats").borders(Borders::ALL));
+
+                        frame.render_widget(paragraph, tables[1]);
+                    }
                 })
                 .unwrap();
 
-            loop {
-                if let Event::Key(key) = read_event().unwrap() {
-                    match key.code {
+            if let Event::Key(key) = read_event().unwrap() {
+                match mode {
+                    CharacterMenuMode::View => match key.code {
                         KeyCode::Char(ch) => match ch {
-                            'a' => return CharacterMenuAction::Add,
+                            'a' => return Some(CharacterMenuAction::Add),
                             'e' => {
-                                let input: usize = loop {
-                                    match Tui::get_input_string().parse() {
-                                        Ok(num) => break num,
-                                        Err(_) => Tui::err("Not a valid number"),
-                                    };
-                                };
-                                return CharacterMenuAction::Edit(input);
+                                if let Some(i) = player_list_state.selected() {
+                                    return Some(CharacterMenuAction::Edit(i));
+                                }
                             }
                             'd' => {
-                                let input: usize = loop {
-                                    match Tui::get_input_string().parse() {
-                                        Ok(num) => break num,
-                                        Err(_) => Tui::err("Not a valid number"),
-                                    };
-                                };
-                                return CharacterMenuAction::Delete(input);
+                                if let Some(i) = player_list_state.selected() {
+                                    return Some(CharacterMenuAction::Delete(i));
+                                }
                             }
-                            'q' => return CharacterMenuAction::Quit,
+                            'q' => return Some(CharacterMenuAction::Quit),
                             _ => (),
                         },
                         KeyCode::Down => {
                             let i = match player_list_state.selected() {
                                 Some(i) => {
                                     if i >= player_list_items.len() - 1 {
-                                        0
+                                        Some(0)
                                     } else {
-                                        i + 1
+                                        Some(i + 1)
                                     }
                                 }
-                                None => 0,
+                                None => {
+                                    if player_list_items.len() > 1 {
+                                        Some(0)
+                                    } else {
+                                        None
+                                    }
+                                }
                             };
-                            player_list_state.select(Some(i));
-                            break;
+                            player_list_state.select(i);
                         }
                         KeyCode::Up => {
                             let i = match player_list_state.selected() {
                                 Some(i) => {
                                     if i == 0 {
-                                        player_list_items.len() - 1
+                                        Some(player_list_items.len() - 1)
                                     } else {
-                                        i - 1
+                                        Some(i - 1)
                                     }
                                 }
-                                None => 0,
+                                None => {
+                                    if player_list_items.len() > 1 {
+                                        Some(0)
+                                    } else {
+                                        None
+                                    }
+                                }
                             };
-                            player_list_state.select(Some(i));
-                            break;
+                            player_list_state.select(i);
                         }
                         _ => (),
+                    },
+                    CharacterMenuMode::Add => match key.code {
+                        KeyCode::Char(ch) => {
+                            add_mode_buffer.as_mut().unwrap().push(ch);
+                        }
+                        KeyCode::Backspace => {
+                            add_mode_buffer.as_mut().unwrap().pop();
+                        }
+                        KeyCode::Enter => {
+                            *add_mode_current_field.as_mut().unwrap() =
+                                match add_mode_current_field.as_ref().unwrap() {
+                                    AddModeCurrentField::Name => {
+                                        AddModeCurrentField::Stat(StatType::Strength)
+                                    }
+                                    AddModeCurrentField::Stat(stat) => {
+                                        let buffer = add_mode_buffer.as_ref().unwrap();
+                                        match stat {
+                                            StatType::Strength => {
+                                                AddModeCurrentField::Stat(StatType::Dexterity)
+                                            }
+                                            StatType::Dexterity => {
+                                                AddModeCurrentField::Stat(StatType::Poise)
+                                            }
+                                            StatType::Poise => {
+                                                AddModeCurrentField::Stat(StatType::Wisdom)
+                                            }
+                                            StatType::Wisdom => {
+                                                AddModeCurrentField::Stat(StatType::Intelligence)
+                                            }
+                                            StatType::Intelligence => {
+                                                AddModeCurrentField::Stat(StatType::Charisma)
+                                            }
+                                            StatType::Charisma => AddModeCurrentField::SkillName(0),
+                                        }
+                                    }
+                                    AddModeCurrentField::SkillName(i) => {
+                                        if add_mode_buffer.as_ref().unwrap().is_empty() {
+                                            AddModeCurrentField::Done
+                                        } else {
+                                            AddModeCurrentField::SkillCD(*i)
+                                        }
+                                    }
+                                    AddModeCurrentField::SkillCD(i) => {
+                                        if !add_mode_buffer.as_ref().unwrap().is_empty() {
+                                            AddModeCurrentField::SkillName(*i + 1)
+                                        } else {
+                                            AddModeCurrentField::SkillCD(*i)
+                                        }
+                                    }
+                                    AddModeCurrentField::Done => AddModeCurrentField::Done,
+                                };
+                            add_mode_buffer.as_mut().unwrap().clear();
+                        }
+                        KeyCode::Esc => {
+                            players.pop();
+                            return None;
+                        }
+                        _ => (),
+                    },
+                    CharacterMenuMode::Edit => {
+                        todo!();
                     }
                 }
             }
         }
-    }
-
-    pub fn edit_player(&mut self, player: Option<Player>) -> Player {
-        unimplemented!();
-        /*
-        disable_raw_mode().unwrap();
-        fn get_text(_term: &mut Term, old_value: String, stat_name: &str) -> String {
-            if !old_value.is_empty() {
-                println!("Old {}: {}. Press enter to skip", stat_name, old_value);
-            }
-            print!("{}: ", stat_name);
-            stdout().flush().unwrap();
-            let input = Tui::get_input_string().trim().to_string();
-            if !old_value.is_empty() && input.is_empty() {
-                return old_value;
-            }
-            input
-        }
-
-        fn get_stat_num(term: &mut Term, old_value: i64, stat_name: &str) -> i64 {
-            loop {
-                if old_value != 0 {
-                    println!("Old {}: {}. Press enter to skip", stat_name, old_value);
-                }
-                print!("{}: ", stat_name);
-                stdout().flush().unwrap();
-                let input = Tui::get_input_string().trim().to_string();
-                if old_value != 0 && input.is_empty() {
-                    return old_value;
-                }
-                match input.parse() {
-                    Ok(num) => return num,
-                    Err(_) => err(term, "Not a valid number"),
-                }
-            }
-        }
-
-        fn err(_term: &mut Term, text: &str) {
-            print!("{}", text);
-            stdout().flush().unwrap();
-            //stdout().flush();
-            read_event().unwrap();
-        }
-
-        //let mut player: Player = Default::default();
-        let mut player: Player = player.unwrap_or_default();
-
-        player.name = get_text(&mut self.term, player.name, "Name");
-
-        println!("Stats:");
-        player.stats.strength = get_stat_num(&mut self.term, player.stats.strength, "Strength");
-        player.stats.dexterity = get_stat_num(&mut self.term, player.stats.dexterity, "Dexterity");
-        player.stats.poise = get_stat_num(&mut self.term, player.stats.poise, "Poise");
-        player.stats.wisdom = get_stat_num(&mut self.term, player.stats.wisdom, "Wisdom");
-        player.stats.intelligence =
-            get_stat_num(&mut self.term, player.stats.intelligence, "Intelligence");
-        player.stats.charisma = get_stat_num(&mut self.term, player.stats.charisma, "Charisma");
-
-        // edit the existing skills first
-        if !player.skills.is_empty() {
-            for (i, skill) in player.skills.iter_mut().enumerate() {
-                skill.name = get_text(&mut self.term, skill.name.clone(), &format!("Skill #{}", i));
-                // TODO: parse i64 to u32 correctly
-                skill.cooldown =
-                    get_stat_num(&mut self.term, skill.cooldown as i64, "Cooldown") as u32;
-                print!("Reset existing cooldown to 0? ");
-                stdout().flush().unwrap();
-                match Tui::get_input_char() {
-                    'y' => skill.available_after = 0,
-                    _ => (),
-                }
-            }
-        }
-
-        println!("Add new skills?");
-        match Tui::get_input_char() {
-            'y' => loop {
-                print!("Skill name (\"q\" to quit): ");
-                stdout().flush().unwrap();
-                let name = Tui::get_input_string().trim().to_string();
-                if name == "q" {
-                    break;
-                }
-                print!("Skill cooldown: ");
-                stdout().flush().unwrap();
-                let cd = loop {
-                    match Tui::get_input_string().trim().parse::<u32>() {
-                        Ok(num) => break num,
-                        Err(_) => err(&mut self.term, "Not a valid number"),
-                    };
-                };
-                player.skills.push(Skill::new(name, cd));
-            },
-            _ => (),
-        }
-
-        player.money = get_stat_num(&mut self.term, player.money, "Money");
-        enable_raw_mode().unwrap();
-        player
-    */
     }
 }

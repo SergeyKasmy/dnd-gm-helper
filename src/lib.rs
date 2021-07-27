@@ -1,7 +1,7 @@
 mod term;
 
 use serde::{Deserialize, Serialize};
-use term::{CharacterMenuAction, GameAction, MainMenuAction, Tui};
+use term::{CharacterMenuAction, CharacterMenuMode, GameAction, MainMenuAction, Tui};
 
 type Players = Vec<Player>;
 type Skills = Vec<Skill>;
@@ -14,6 +14,16 @@ pub struct Player {
     skills: Vec<Skill>,
     statuses: Vec<Status>,
     money: i64,
+}
+
+#[derive(Copy, Clone, Debug)]
+enum StatType {
+    Strength,
+    Dexterity,
+    Poise,
+    Wisdom,
+    Intelligence,
+    Charisma,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug)]
@@ -239,25 +249,19 @@ pub fn run() {
 
 fn character_menu(term: &mut Tui, players: &mut Players) {
     loop {
-        match term.draw_character_menu(&players) {
+        match term
+            .draw_character_menu(CharacterMenuMode::View, players)
+            .unwrap()
+        {
             CharacterMenuAction::Add => {
-                players.push(term.edit_player(None));
+                term.draw_character_menu(CharacterMenuMode::Add, players);
             }
             CharacterMenuAction::Edit(num) => {
-                if num < 1 || num > players.len() {
-                    Tui::err(&format!("{} is out of bounds", num + 1));
-                    break;
-                }
-                let num = num - 1;
                 let player_to_edit = players.remove(num);
                 players.insert(num, term.edit_player(Some(player_to_edit)));
             }
             CharacterMenuAction::Delete(num) => {
-                if num < 1 || num > players.len() {
-                    Tui::err(&format!("{} is out of bounds", num + 1));
-                    break;
-                }
-                players.remove(num - 1);
+                players.remove(num);
             }
             CharacterMenuAction::Quit => break,
         }
