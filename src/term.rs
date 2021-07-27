@@ -13,7 +13,7 @@ use tui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans, Text},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Widget},
+    widgets::{Block, Borders, Cell, List, ListItem, ListState, Paragraph, Row, Table, Widget},
     Terminal,
 };
 
@@ -234,7 +234,7 @@ impl Tui {
         self.term
             .borrow_mut()
             .draw(|frame| {
-                let player_stats = Tui::print_player_stats(player);
+                let player_stats = Tui::player_stats_table(player, None);
                 let delimiter = Span::raw(" | ");
                 let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
                 let statusbar_text = Spans::from(vec![
@@ -279,7 +279,7 @@ impl Tui {
                 ]);
                 let layout = self.get_window_size(frame.size());
 
-                frame.render_widget(Paragraph::new(player_stats), layout[0]);
+                frame.render_widget(player_stats, layout[0]);
                 frame.render_widget(
                     Tui::stylize_statusbar(statusbar_text, StatusBarType::Normal),
                     layout[1],
@@ -305,46 +305,61 @@ impl Tui {
         };
     }
 
-    pub fn print_player_stats(player: &Player) -> Vec<Spans> {
-        let mut out: Vec<Spans> = Vec::with_capacity(10);
-        out.push(format!("Name: {}", player.name).into());
-        out.push("Stats:".into());
-        out.push(format!("....Strength: {}", player.stats.strength).into());
-        out.push(format!("....Dexterity: {}", player.stats.dexterity).into());
-        out.push(format!("....Poise: {}", player.stats.poise).into());
-        out.push(format!("....Wisdom: {}", player.stats.wisdom).into());
-        out.push(format!("....Intelligence: {}", player.stats.intelligence).into());
-        out.push(format!("....Charisma: {}", player.stats.charisma).into());
+    // TODO: use an enum instead of just the id of the field
+    fn player_stats_table(player: &Player, selected: Option<u32>) -> impl Widget + '_ {
+        let mut rows = vec![
+            Row::new(["Name", player.name.as_str()]),
+            Row::new(["Stats"]),
+            // TODO: mb use a slice instead
+            Row::new::<Vec<Cell>>(vec![
+                "Strength".into(),
+                player.stats.strength.to_string().into(),
+            ]),
+            Row::new::<Vec<Cell>>(vec![
+                "Dexterity".into(),
+                player.stats.dexterity.to_string().into(),
+            ]),
+            Row::new::<Vec<Cell>>(vec!["Poise".into(), player.stats.poise.to_string().into()]),
+            Row::new::<Vec<Cell>>(vec![
+                "Wisdom".into(),
+                player.stats.wisdom.to_string().into(),
+            ]),
+            Row::new::<Vec<Cell>>(vec![
+                "Intelligence".into(),
+                player.stats.intelligence.to_string().into(),
+            ]),
+            Row::new::<Vec<Cell>>(vec![
+                "Charisma".into(),
+                player.stats.charisma.to_string().into(),
+            ]),
+            Row::new(["Skills"]),
+        ];
 
-        if !player.skills.is_empty() {
-            out.push("Skills:".into());
-        }
-        for skill in &player.skills {
-            out.push(
-                format!(
-                    "....{}. CD: {}. Available after {} moves",
-                    skill.name, skill.cooldown, skill.available_after
-                )
-                .into(),
-            );
+        for skill in player.skills.iter() {
+            rows.push(Row::new::<Vec<Cell>>(vec![
+                "Name".into(),
+                skill.name.as_str().into(),
+                "CD".into(),
+                skill.cooldown.to_string().into(),
+                "Available after".into(),
+                skill.available_after.to_string().into(),
+            ]));
         }
 
-        if !player.statuses.is_empty() {
-            out.push("Statuses:".into());
-        }
-        for status in &player.statuses {
-            out.push(
-                format!(
-                    "....{:?}, Still active for {} moves",
-                    status.status_type, status.duration
-                )
-                .into(),
-            );
-        }
+        rows.push(Row::new::<Vec<Cell>>(vec![
+            "Money".into(),
+            player.money.to_string().into(),
+        ]));
 
-        out.push(format!("Money: {}", player.money).into());
-
-        out
+        Table::new(rows).widths(
+            [
+                Constraint::Length(10),
+                Constraint::Percentage(25),
+                Constraint::Length(10),
+                Constraint::Percentage(25),
+            ]
+            .as_ref(),
+        )
     }
 
     pub fn choose_skill(skills: &Skills) -> Option<u32> {
@@ -731,10 +746,13 @@ impl Tui {
                     frame.render_stateful_widget(player_list, tables[0], &mut player_list_state);
 
                     if let Some(num) = player_list_state.selected() {
+                        /*
                         let paragraph = Paragraph::new(Tui::print_player_stats(&players[num]))
                             .block(Block::default().title("Player stats").borders(Borders::ALL));
 
                         frame.render_widget(paragraph, tables[1]);
+                        */
+                        frame.render_widget(Tui::player_stats_table(&players[num], None), tables[1]);
                     }
                 })
                 .unwrap();
