@@ -475,6 +475,22 @@ impl Tui {
                     ))
                     .block(Block::default().title("Player stats").borders(Borders::ALL));
                     let statusbar_text = "Add: a, Edit: e, Delete: d, Quit: q";
+                    let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
+                    let delimiter = Span::raw(" | ");
+
+                    let statusbar_text = Spans::from(vec![
+                        Span::styled("A", style_underlined),
+                        "dd".into(),
+                        delimiter.clone(),
+                        Span::styled("E", style_underlined),
+                        "dit".into(),
+                        delimiter.clone(),
+                        Span::styled("D", style_underlined),
+                        "elete".into(),
+                        delimiter.clone(),
+                        Span::styled("Q", style_underlined),
+                        "uit".into(),
+                    ]);
 
                     frame.render_stateful_widget(player_list, tables[0], &mut player_list_state);
                     frame.render_widget(player_stats, tables[1]);
