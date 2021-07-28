@@ -168,11 +168,12 @@ fn choose_skill_and_use(skills: &mut Skills) {
                 if skill.available_after == 0 {
                     use_skill(skill);
                 } else {
-                    Tui::err("Skill still on cooldown");
+                    todo!();
+                    //Tui::err("Skill still on cooldown");
                 }
                 break;
             }
-            None => Tui::err("Number out of bounds"),
+            None => todo!(),    //Tui::err("Number out of bounds"),
         }
     }
 }
@@ -218,6 +219,8 @@ pub fn run() {
             match serde_json::from_str(&json) {
                 Ok(data) => players = data,
                 Err(er) => {
+                    todo!();
+                    /*
                     Tui::err(&format!("players.json is not a valid json file. {}", er));
                     std::fs::copy(
                         "players.json",
@@ -230,10 +233,11 @@ pub fn run() {
                         ),
                     )
                     .unwrap();
+                    */
                 }
             };
         }
-        Err(er) => Tui::err(&format!("Couldn't read from file: {}", er)),
+        Err(er) => todo!(),     //Tui::err(&format!("Couldn't read from file: {}", er)),
     }
 
     let mut tui = Tui::new();

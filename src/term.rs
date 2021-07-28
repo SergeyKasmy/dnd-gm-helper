@@ -1,8 +1,7 @@
 use crate::{Player, Players, Skill, Skills, StatType, Status, StatusCooldownType, StatusType};
 use crossterm::event::{read as read_event, Event, KeyCode};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use std::cell::RefCell;
-use std::io::{stdout, Stdout, Write};
+use std::io::{stdout, Stdout};
 use tui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -73,7 +72,6 @@ impl PlayerField {
                 StatType::Intelligence => PlayerField::Stat(StatType::Charisma),
                 StatType::Charisma => PlayerField::SkillName(0),
             },
-            //PlayerField::Money => PlayerField::SkillName(0),
             PlayerField::SkillName(i) => PlayerField::SkillCD(*i),
             PlayerField::SkillCD(i) => PlayerField::SkillName(*i + 1),
         }
@@ -108,7 +106,7 @@ pub struct Tui {
 
 impl Tui {
     pub fn new() -> Tui {
-        enable_raw_mode().unwrap();
+        crossterm::terminal::enable_raw_mode().unwrap();
 
         let term = RefCell::new(Terminal::new(CrosstermBackend::new(stdout())).unwrap());
 
@@ -128,73 +126,6 @@ impl Tui {
             StatusBarType::Error => Style::default().bg(Color::Red).fg(Color::White),
         };
         Paragraph::new(text.into()).style(style)
-    }
-
-    fn get_input_char() -> char {
-        enable_raw_mode().unwrap();
-        loop {
-            if let Event::Key(key) = read_event().unwrap() {
-                if let KeyCode::Char(ch) = key.code {
-                    return ch;
-                }
-            }
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    fn get_input_string() -> String {
-        disable_raw_mode().unwrap();
-        let mut input = String::new();
-
-        loop {
-            if let Event::Key(key) = read_event().unwrap() {
-                match key.code {
-                    KeyCode::Char(ch) => input.push(ch),
-                    KeyCode::Enter => break,
-                    _ => (),
-                }
-            }
-        }
-
-        enable_raw_mode().unwrap();
-        input
-    }
-
-    // TODO: do something about this shit
-    #[cfg(target_os = "windows")]
-    fn get_input_string() -> String {
-        enable_raw_mode().unwrap();
-        let mut input = String::new();
-
-        loop {
-            if let Event::Key(key) = read_event().unwrap() {
-                match key.code {
-                    KeyCode::Char(ch) => {
-                        input.push(ch);
-                        disable_raw_mode().unwrap();
-                        print!("{}", ch);
-                        stdout().flush().unwrap();
-                        enable_raw_mode().unwrap();
-                    }
-                    KeyCode::Enter => {
-                        disable_raw_mode().unwrap();
-                        print!("\n\r");
-                        stdout().flush().unwrap();
-                        enable_raw_mode().unwrap();
-                        break;
-                    }
-                    _ => (),
-                }
-            }
-        }
-
-        input
-    }
-
-    pub fn err(text: &str) {
-        disable_raw_mode().unwrap();
-        eprintln!("{}", text);
-        enable_raw_mode().unwrap();
     }
 
     pub fn messagebox_with_options(&self, desc: &str, options: Vec<&str>) -> usize {
@@ -437,6 +368,7 @@ impl Tui {
     }
 
     pub fn draw_game(&mut self, player: &Player) -> GameAction {
+        loop{
         self.term
             .borrow_mut()
             .draw(|frame| {
@@ -493,22 +425,27 @@ impl Tui {
             })
             .unwrap();
 
-        return loop {
-            match Tui::get_input_char() {
-                's' => break GameAction::UseSkill,
-                'a' => break GameAction::AddStatus,
-                'b' => break GameAction::DrainStatusAttacking,
-                'n' => break GameAction::DrainStatusAttacked,
-                'c' => break GameAction::ClearStatuses,
-                'v' => break GameAction::ResetSkillsCD,
-                'm' => break GameAction::ManageMoney,
-                ' ' => break GameAction::MakeTurn,
-                'p' => break GameAction::SkipTurn,
-                'o' => break GameAction::NextPlayerPick,
-                'q' => break GameAction::Quit,
+            match read_event().unwrap() {
+                Event::Key(key) => match key.code {
+                    KeyCode::Char(ch) => match ch {
+                        's' => return GameAction::UseSkill,
+                        'a' => return GameAction::AddStatus,
+                        'b' => return GameAction::DrainStatusAttacking,
+                        'n' => return GameAction::DrainStatusAttacked,
+                        'c' => return GameAction::ClearStatuses,
+                        'v' => return GameAction::ResetSkillsCD,
+                        'm' => return GameAction::ManageMoney,
+                        ' ' => return GameAction::MakeTurn,
+                        'p' => return GameAction::SkipTurn,
+                        'o' => return GameAction::NextPlayerPick,
+                        'q' => return GameAction::Quit,
+                        _ => (),
+                    }
+                    _ => (),
+                }
                 _ => (),
             }
-        };
+        }
     }
 
     fn player_stats_table(player: &Player, selected: Option<PlayerField>) -> impl Widget + '_ {
@@ -637,6 +574,8 @@ impl Tui {
     }
 
     pub fn choose_skill(skills: &Skills) -> Option<u32> {
+        todo!();
+        /*
         disable_raw_mode().unwrap();
         for (i, skill) in skills.iter().enumerate() {
             println!("#{}: {}", i + 1, skill.name);
@@ -656,9 +595,12 @@ impl Tui {
                 },
             }
         }
+        */
     }
 
     pub fn choose_status() -> Option<Status> {
+        todo!();
+        /*
         disable_raw_mode().unwrap();
         println!("Choose a status:");
         println!("Buffs:");
@@ -728,9 +670,12 @@ impl Tui {
             status_cooldown_type,
             duration,
         })
+        */
     }
 
     pub fn get_money_amount() -> i64 {
+        todo!();
+        /*
         print!("Add or remove money (use + or - before the amount): ");
         stdout().flush().unwrap();
         let input = Tui::get_input_string().trim().to_string();
@@ -769,9 +714,12 @@ impl Tui {
             '-' => -amount,
             '+' | _ => amount,
         };
+        */
     }
 
     pub fn pick_player(players: &Players) -> &Player {
+        todo!();
+        /*
         disable_raw_mode().unwrap();
         for (i, player) in players.iter().enumerate() {
             println!("#{}. {}", i + 1, player.name);
@@ -791,6 +739,7 @@ impl Tui {
                 None => (),
             }
         }
+        */
     }
 
     pub fn draw_character_menu(
