@@ -103,7 +103,7 @@ fn game_start(tui: &mut Tui, players: &mut Players) {
             }
             loop {
                 match tui.draw_game(&player) {
-                    GameAction::UseSkill => choose_skill_and_use(&mut player.skills),
+                    GameAction::UseSkill => choose_skill_and_use(tui, &mut player.skills),
                     GameAction::AddStatus => add_status(&mut player.statuses),
                     GameAction::DrainStatusAttacking => {
                         drain_status(player, StatusCooldownType::Attacking)
@@ -157,13 +157,13 @@ fn drain_status(player: &mut Player, status_type: StatusCooldownType) {
     }
 }
 
-fn choose_skill_and_use(skills: &mut Skills) {
+fn choose_skill_and_use(tui: &mut Tui, skills: &mut Skills) {
     loop {
-        let input = match Tui::choose_skill(&skills) {
+        let input = match tui.choose_skill(&skills) {
             Some(num) => num as usize,
             None => return,
         };
-        match skills.get_mut(input - 1) {
+        match skills.get_mut(input) {
             Some(skill) => {
                 if skill.available_after == 0 {
                     use_skill(skill);

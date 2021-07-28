@@ -651,8 +651,7 @@ impl Tui {
         )
     }
 
-    pub fn choose_skill(skills: &Skills) -> Option<u32> {
-        todo!();
+    pub fn choose_skill(&self, skills: &Skills) -> Option<u32> {
         /*
         disable_raw_mode().unwrap();
         for (i, skill) in skills.iter().enumerate() {
@@ -674,6 +673,7 @@ impl Tui {
             }
         }
         */
+        Some(self.messagebox_with_options("Select skill", skills.iter().map(|skill| skill.name.as_str()).collect::<Vec<&str>>().as_slice(), true) as u32)
     }
 
     pub fn choose_status() -> Option<Status> {
