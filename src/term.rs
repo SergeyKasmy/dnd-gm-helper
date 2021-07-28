@@ -59,9 +59,6 @@ enum PlayerField {
     Stat(StatType),
     SkillName(usize),
     SkillCD(usize),
-    Money,
-    // TODO: replace with Option<>
-    Done,
 }
 
 impl PlayerField {
@@ -76,11 +73,9 @@ impl PlayerField {
                 StatType::Intelligence => PlayerField::Stat(StatType::Charisma),
                 StatType::Charisma => PlayerField::SkillName(0),
             },
+            //PlayerField::Money => PlayerField::SkillName(0),
             PlayerField::SkillName(i) => PlayerField::SkillCD(*i),
             PlayerField::SkillCD(i) => PlayerField::SkillName(*i + 1),
-            // TODO: should money show in the add character screen? what do even do about them?
-            PlayerField::Money => PlayerField::Done,
-            PlayerField::Done => PlayerField::Done,
         }
     }
 
@@ -103,9 +98,6 @@ impl PlayerField {
                 }
             }
             PlayerField::SkillCD(i) => PlayerField::SkillName(*i),
-            // TODO: same as in next()
-            PlayerField::Money => PlayerField::Done,
-            PlayerField::Done => PlayerField::Done,
         }
     }
 }
@@ -621,6 +613,7 @@ impl Tui {
             );
         }
 
+        /*
         rows.push(
             Row::new::<Vec<Cell>>(vec!["Money".into(), player.money.to_string().into()]).style(
                 if let Some(PlayerField::Money) = selected {
@@ -630,6 +623,7 @@ impl Tui {
                 },
             ),
         );
+        */
 
         Table::new(rows).widths(
             [
@@ -827,68 +821,72 @@ impl Tui {
                     players.get_mut(i).unwrap()
                 };
 
-                match add_mode_current_field.as_ref().unwrap() {
-                    PlayerField::Name => {
-                        // TODO: don't copy twice stupid
-                        if let None = add_mode_buffer {
-                            add_mode_buffer = Some(current_player.name.clone());
-                        }
-                        current_player.name = add_mode_buffer.as_ref().unwrap().clone()
-                    }
-                    PlayerField::Stat(stat) => {
-                        let current_stat = match stat {
-                            StatType::Strength => &mut current_player.stats.strength,
-                            StatType::Dexterity => &mut current_player.stats.dexterity,
-                            StatType::Poise => &mut current_player.stats.poise,
-                            StatType::Wisdom => &mut current_player.stats.wisdom,
-                            StatType::Intelligence => &mut current_player.stats.intelligence,
-                            StatType::Charisma => &mut current_player.stats.charisma,
-                        };
-                        if let None = add_mode_buffer {
-                            add_mode_buffer = Some(current_stat.to_string());
-                        }
-                        match add_mode_buffer.as_ref().unwrap().parse::<i64>() {
-                            Ok(num) => *current_stat = num,
-                            Err(_) => errors.push(String::from(format!(
-                                "Not a valid number(s): {}",
-                                add_mode_buffer.as_ref().unwrap()
-                            ))),
-                        }
-                    }
-                    // TODO: make that look nicer
-                    // currently a new skill just appears out of nowhere when you start typing
-                    PlayerField::SkillName(i) => {
-                        if let None = current_player.skills.get(*i) {
-                            current_player.skills.push(Skill::default());
-                        }
-                        let skill = &mut current_player.skills[*i];
+                match add_mode_current_field {
+                    Some(field) => {
+                        match field {
+                            PlayerField::Name => {
+                                // TODO: don't copy twice stupid
+                                if let None = add_mode_buffer {
+                                    add_mode_buffer = Some(current_player.name.clone());
+                                }
+                                current_player.name = add_mode_buffer.as_ref().unwrap().clone()
+                            }
+                            PlayerField::Stat(stat) => {
+                                let current_stat = match stat {
+                                    StatType::Strength => &mut current_player.stats.strength,
+                                    StatType::Dexterity => &mut current_player.stats.dexterity,
+                                    StatType::Poise => &mut current_player.stats.poise,
+                                    StatType::Wisdom => &mut current_player.stats.wisdom,
+                                    StatType::Intelligence => {
+                                        &mut current_player.stats.intelligence
+                                    }
+                                    StatType::Charisma => &mut current_player.stats.charisma,
+                                };
+                                if let None = add_mode_buffer {
+                                    add_mode_buffer = Some(current_stat.to_string());
+                                }
+                                match add_mode_buffer.as_ref().unwrap().parse::<i64>() {
+                                    Ok(num) => *current_stat = num,
+                                    Err(_) => errors.push(String::from(format!(
+                                        "Not a valid number(s): {}",
+                                        add_mode_buffer.as_ref().unwrap()
+                                    ))),
+                                }
+                            }
+                            // TODO: make that look nicer
+                            // currently a new skill just appears out of nowhere when you start typing
+                            PlayerField::SkillName(i) => {
+                                if let None = current_player.skills.get(i) {
+                                    current_player.skills.push(Skill::default());
+                                }
+                                let skill = &mut current_player.skills[i];
 
-                        if let None = add_mode_buffer {
-                            add_mode_buffer = Some(skill.name.clone());
-                        }
+                                if let None = add_mode_buffer {
+                                    add_mode_buffer = Some(skill.name.clone());
+                                }
 
-                        skill.name = add_mode_buffer.as_ref().unwrap().clone();
-                    }
-                    PlayerField::SkillCD(i) => {
-                        if let None = current_player.skills.get(*i) {
-                            current_player.skills.push(Skill::default());
-                        }
-                        let skill = &mut current_player.skills[*i];
+                                skill.name = add_mode_buffer.as_ref().unwrap().clone();
+                            }
+                            PlayerField::SkillCD(i) => {
+                                if let None = current_player.skills.get(i) {
+                                    current_player.skills.push(Skill::default());
+                                }
+                                let skill = &mut current_player.skills[i];
 
-                        if let None = add_mode_buffer {
-                            add_mode_buffer = Some(skill.cooldown.to_string());
-                        }
-                        match add_mode_buffer.as_ref().unwrap().parse::<u32>() {
-                            Ok(num) => skill.cooldown = num,
-                            Err(_) => errors.push(String::from(format!(
-                                "Not a valid number(s): {}",
-                                add_mode_buffer.as_ref().unwrap()
-                            ))),
+                                if let None = add_mode_buffer {
+                                    add_mode_buffer = Some(skill.cooldown.to_string());
+                                }
+                                match add_mode_buffer.as_ref().unwrap().parse::<u32>() {
+                                    Ok(num) => skill.cooldown = num,
+                                    Err(_) => errors.push(String::from(format!(
+                                        "Not a valid number(s): {}",
+                                        add_mode_buffer.as_ref().unwrap()
+                                    ))),
+                                }
+                            }
                         }
                     }
-                    // TODO: same as in next()
-                    PlayerField::Money => return None,
-                    PlayerField::Done => return None,
+                    None => return None,
                 }
             }
 
@@ -1066,11 +1064,13 @@ impl Tui {
                         }
                         KeyCode::Enter => {
                             if let CharacterMenuMode::Add = mode {
-                                let mut next = add_mode_current_field.as_ref().unwrap().next();
-                                let current = add_mode_current_field.as_mut().unwrap();
+                                let mut next =
+                                    Some(add_mode_current_field.as_ref().unwrap().next());
 
                                 // if pressed Enter with an empty buffer when adding skills - the last item -> done
-                                if let PlayerField::SkillName(current_skill_num) = current {
+                                if let Some(PlayerField::SkillName(current_skill_num)) =
+                                    add_mode_current_field
+                                {
                                     if add_mode_buffer.as_ref().unwrap().is_empty() {
                                         // TODO: somehow avoid nest matching mode twice
                                         let current_player_num = match mode {
@@ -1080,17 +1080,18 @@ impl Tui {
                                         };
                                         players[current_player_num]
                                             .skills
-                                            .remove(*current_skill_num);
-                                        next = PlayerField::Done;
+                                            .remove(current_skill_num);
+                                        next = None;
                                     }
                                 // don't assume a default skill cd, just don't do anything
-                                } else if let PlayerField::SkillCD(_) = current {
+                                } else if let Some(PlayerField::SkillCD(_)) = add_mode_current_field
+                                {
                                     if add_mode_buffer.as_ref().unwrap().is_empty() {
                                         continue;
                                     }
                                 }
 
-                                *current = next;
+                                add_mode_current_field = next;
                                 add_mode_buffer = None;
                             } else if let CharacterMenuMode::Edit(_) = mode {
                                 return None;
