@@ -107,10 +107,7 @@ pub struct Tui {
 impl Tui {
     pub fn new() -> Tui {
         crossterm::terminal::enable_raw_mode().unwrap();
-
-        let term = RefCell::new(Terminal::new(CrosstermBackend::new(stdout())).unwrap());
-
-        Tui { term }
+        Tui { term: RefCell::new(Terminal::new(CrosstermBackend::new(stdout())).unwrap()) }
     }
 
     fn get_window_size(&self, window: Rect) -> Vec<Rect> {
@@ -139,8 +136,7 @@ impl Tui {
                     Constraint::Length(offset_y),
                     Constraint::Length(height),
                     Constraint::Length(offset_y),
-                ]
-                .as_ref(),
+                ].as_ref()
             )
             .split(frame);
 
@@ -151,8 +147,7 @@ impl Tui {
                     Constraint::Length(offset_x),
                     Constraint::Length(width),
                     Constraint::Length(offset_x),
-                ]
-                .as_ref(),
+                ].as_ref()
             )
             .split(layout_x[1])[1]
     }
@@ -167,8 +162,7 @@ impl Tui {
                     Constraint::Length(1), // space
                     Constraint::Length(1), // buttons
                     Constraint::Length(2), // space + border
-                ]
-                .as_ref(),
+                ].as_ref()
             )
             .split(messagebox);
 
@@ -181,8 +175,7 @@ impl Tui {
                         Constraint::Length(2),
                         Constraint::Length(messagebox.width - 4),
                         Constraint::Length(2),
-                    ]
-                    .as_ref(),
+                    ].as_ref()
                 )
                 .split(layout_x[1])[1],
             Layout::default()
@@ -192,8 +185,7 @@ impl Tui {
                         Constraint::Length(2),
                         Constraint::Length(messagebox.width - 4),
                         Constraint::Length(2),
-                    ]
-                    .as_ref(),
+                    ].as_ref()
                 )
                 .split(layout_x[3])[1],
         )
@@ -202,7 +194,7 @@ impl Tui {
     pub fn messagebox_with_options(
         &self,
         desc: &str,
-        options: Vec<&str>,
+        options: &[&str],
         is_vertical: bool,
     ) -> usize {
         let width = {
@@ -394,14 +386,14 @@ impl Tui {
     }
 
     pub fn messagebox_yn(&self, desc: &str) -> bool {
-        match self.messagebox_with_options(desc, vec!["Yes", "No"], false) {
+        match self.messagebox_with_options(desc, &["Yes", "No"], false) {
             0 => true,
             _ => false,
         }
     }
 
     pub fn messagebox(&self, desc: &str) {
-        self.messagebox_with_options(desc, vec!["OK"], false);
+        self.messagebox_with_options(desc, &["OK"], false);
     }
 
     pub fn draw_main_menu(&mut self) -> MainMenuAction {
@@ -655,8 +647,7 @@ impl Tui {
                 Constraint::Percentage(25),
                 Constraint::Length(10),
                 Constraint::Percentage(25),
-            ]
-            .as_ref(),
+            ].as_ref()
         )
     }
 
@@ -829,6 +820,8 @@ impl Tui {
         */
     }
 
+    // TODO: separate most logic out of the UI and into the backend
+    // don't mix frontend and backend stupid
     pub fn draw_character_menu(
         &mut self,
         mode: CharacterMenuMode,
@@ -959,7 +952,7 @@ impl Tui {
                     let tables = Layout::default()
                         .direction(Direction::Horizontal)
                         .constraints(
-                            [Constraint::Percentage(25), Constraint::Percentage(75)].as_ref(),
+                            [Constraint::Percentage(20), Constraint::Percentage(80)].as_ref(),
                         )
                         .split(layout[0]);
 
