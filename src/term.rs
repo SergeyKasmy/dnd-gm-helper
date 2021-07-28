@@ -128,6 +128,77 @@ impl Tui {
         Paragraph::new(text.into()).style(style)
     }
 
+    fn get_centered_box(frame: Rect, width: u16, height: u16) -> Rect {
+        let offset_x = (frame.width - width) / 2;
+        let offset_y = (frame.height - height) / 2;
+
+        let layout_x = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(
+                [
+                    Constraint::Length(offset_y),
+                    Constraint::Length(height),
+                    Constraint::Length(offset_y),
+                ]
+                .as_ref(),
+            )
+            .split(frame);
+
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(
+                [
+                    Constraint::Length(offset_x),
+                    Constraint::Length(width),
+                    Constraint::Length(offset_x),
+                ]
+                .as_ref(),
+            )
+            .split(layout_x[1])[1]
+    }
+
+    fn get_messagebox_text_input_locations(messagebox: Rect) -> (Rect, Rect) {
+        let layout_x = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(
+                [
+                    Constraint::Length(2), // border + space
+                    Constraint::Length(1), // the text
+                    Constraint::Length(1), // space
+                    Constraint::Length(1), // buttons
+                    Constraint::Length(2), // space + border
+                ]
+                .as_ref(),
+            )
+            .split(messagebox);
+
+        (
+            // the 4 is 2 borders and 2 margins
+            Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints(
+                    [
+                        Constraint::Length(2),
+                        Constraint::Length(messagebox.width - 4),
+                        Constraint::Length(2),
+                    ]
+                    .as_ref(),
+                )
+                .split(layout_x[1])[1],
+            Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints(
+                    [
+                        Constraint::Length(2),
+                        Constraint::Length(messagebox.width - 4),
+                        Constraint::Length(2),
+                    ]
+                    .as_ref(),
+                )
+                .split(layout_x[3])[1],
+        )
+    }
+
     pub fn messagebox_with_options(&self, desc: &str, options: Vec<&str>) -> usize {
         let width = {
             let desc_width = desc.len() as u16 + 4;
@@ -154,83 +225,14 @@ impl Tui {
             self.term
                 .borrow_mut()
                 .draw(|frame| {
-                    // Hopefully len() won't be too fucking long pls
-                    // the +4 is 2 borders and 2 margins
-
-                    let block_rect = {
-                        let offset_x = (frame.size().width - width) / 2;
-                        let offset_y = (frame.size().height - height) / 2;
-
-                        let layout_x = Layout::default()
-                            .direction(Direction::Vertical)
-                            .constraints(
-                                [
-                                    Constraint::Length(offset_y),
-                                    Constraint::Length(height),
-                                    Constraint::Length(offset_y),
-                                ]
-                                .as_ref(),
-                            )
-                            .split(frame.size());
-
-                        Layout::default()
-                            .direction(Direction::Horizontal)
-                            .constraints(
-                                [
-                                    Constraint::Length(offset_x),
-                                    Constraint::Length(width),
-                                    Constraint::Length(offset_x),
-                                ]
-                                .as_ref(),
-                            )
-                            .split(layout_x[1])[1]
-                    };
-
-                    let (text_rect, buttons_rect) = {
-                        let layout_x = Layout::default()
-                            .direction(Direction::Vertical)
-                            .constraints(
-                                [
-                                    Constraint::Length(2), // border + space
-                                    Constraint::Length(1), // the text
-                                    Constraint::Length(1), // space
-                                    Constraint::Length(1), // buttons
-                                    Constraint::Length(2), // space + border
-                                ]
-                                .as_ref(),
-                            )
-                            .split(block_rect);
-
-                        (
-                            Layout::default()
-                                .direction(Direction::Horizontal)
-                                .constraints(
-                                    [
-                                        Constraint::Length(2),
-                                        Constraint::Length(width - 4),
-                                        Constraint::Length(2),
-                                    ]
-                                    .as_ref(),
-                                )
-                                .split(layout_x[1])[1],
-                            Layout::default()
-                                .direction(Direction::Horizontal)
-                                .constraints(
-                                    [
-                                        Constraint::Length(2),
-                                        Constraint::Length(width - 4),
-                                        Constraint::Length(2),
-                                    ]
-                                    .as_ref(),
-                                )
-                                .split(layout_x[3])[1],
-                        )
-                    };
+                    let block_rect = Tui::get_centered_box(frame.size(), width, height);
+                    let (desc_rect, buttons_rect) =
+                        Tui::get_messagebox_text_input_locations(block_rect);
 
                     let block = Block::default().borders(Borders::ALL);
-                    let paragraph = Paragraph::new(desc).alignment(Alignment::Center);
+                    let desc = Paragraph::new(desc).alignment(Alignment::Center);
                     frame.render_widget(block.clone(), block_rect);
-                    frame.render_widget(paragraph, text_rect);
+                    frame.render_widget(desc, desc_rect);
 
                     {
                         const OFFSET_BETWEEN_BUTTONS: u16 = 3;
@@ -306,6 +308,44 @@ impl Tui {
         }
     }
 
+    pub fn messagebox_with_input_field(&self, desc: &str) -> String {
+        let width = desc.len() as u16 + 4;
+        let height = 7;
+        let mut buffer = String::new();
+
+        loop {
+            self.term
+                .borrow_mut()
+                .draw(|frame| {
+                    let block_rect = Tui::get_centered_box(frame.size(), width, height);
+                    let (desc_rect, input_rect) =
+                        Tui::get_messagebox_text_input_locations(block_rect);
+
+                    let block = Block::default().borders(Borders::ALL);
+                    let desc = Paragraph::new(desc).alignment(Alignment::Center);
+                    let input = Paragraph::new(buffer.as_str());
+                    frame.render_widget(block.clone(), block_rect);
+                    frame.render_widget(desc, desc_rect);
+                    frame.render_widget(input, input_rect);
+                })
+                .unwrap();
+
+            match read_event().unwrap() {
+                Event::Key(key) => match key.code {
+                    KeyCode::Char(ch) => buffer.push(ch),
+                    KeyCode::Backspace => {
+                        buffer.pop();
+                    }
+                    KeyCode::Enter => {
+                        return buffer;
+                    }
+                    _ => (),
+                },
+                _ => (),
+            }
+        }
+    }
+
     pub fn messagebox_yn(&self, desc: &str) -> bool {
         match self.messagebox_with_options(desc, vec!["Yes", "No"]) {
             0 => true,
@@ -368,62 +408,62 @@ impl Tui {
     }
 
     pub fn draw_game(&mut self, player: &Player) -> GameAction {
-        loop{
-        self.term
-            .borrow_mut()
-            .draw(|frame| {
-                let player_stats = Tui::player_stats_table(player, None);
-                let delimiter = Span::raw(" | ");
-                let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
-                let statusbar_text = Spans::from(vec![
-                    "Use ".into(),
-                    Span::styled("s", style_underlined),
-                    "kill".into(),
-                    delimiter.clone(),
-                    Span::styled("A", style_underlined),
-                    "dd status".into(),
-                    delimiter.clone(),
-                    "Drain status (a".into(),
-                    Span::styled("f", style_underlined),
-                    "ter attacking".into(),
-                    ", ".into(),
-                    "after ".into(),
-                    Span::styled("g", style_underlined),
-                    "etting attacked)".into(),
-                    delimiter.clone(),
-                    Span::styled("C", style_underlined),
-                    "lear statuses".into(),
-                    ", ".into(),
-                    "skill CD :".into(),
-                    Span::styled("v", style_underlined),
-                    delimiter.clone(),
-                    "Manage ".into(),
-                    Span::styled("m", style_underlined),
-                    "oney".into(),
-                    delimiter.clone(),
-                    "Next turn: \"".into(),
-                    Span::styled(" ", style_underlined),
-                    "\"".into(),
-                    delimiter.clone(),
-                    "Ski".into(),
-                    Span::styled("p", style_underlined),
-                    " turn".into(),
-                    delimiter.clone(),
-                    Span::styled("P", style_underlined),
-                    "ick next pl.".into(),
-                    delimiter.clone(),
-                    Span::styled("Q", style_underlined),
-                    "uit".into(),
-                ]);
-                let layout = self.get_window_size(frame.size());
+        loop {
+            self.term
+                .borrow_mut()
+                .draw(|frame| {
+                    let player_stats = Tui::player_stats_table(player, None);
+                    let delimiter = Span::raw(" | ");
+                    let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
+                    let statusbar_text = Spans::from(vec![
+                        "Use ".into(),
+                        Span::styled("s", style_underlined),
+                        "kill".into(),
+                        delimiter.clone(),
+                        Span::styled("A", style_underlined),
+                        "dd status".into(),
+                        delimiter.clone(),
+                        "Drain status (a".into(),
+                        Span::styled("f", style_underlined),
+                        "ter attacking".into(),
+                        ", ".into(),
+                        "after ".into(),
+                        Span::styled("g", style_underlined),
+                        "etting attacked)".into(),
+                        delimiter.clone(),
+                        Span::styled("C", style_underlined),
+                        "lear statuses".into(),
+                        ", ".into(),
+                        "skill CD :".into(),
+                        Span::styled("v", style_underlined),
+                        delimiter.clone(),
+                        "Manage ".into(),
+                        Span::styled("m", style_underlined),
+                        "oney".into(),
+                        delimiter.clone(),
+                        "Next turn: \"".into(),
+                        Span::styled(" ", style_underlined),
+                        "\"".into(),
+                        delimiter.clone(),
+                        "Ski".into(),
+                        Span::styled("p", style_underlined),
+                        " turn".into(),
+                        delimiter.clone(),
+                        Span::styled("P", style_underlined),
+                        "ick next pl.".into(),
+                        delimiter.clone(),
+                        Span::styled("Q", style_underlined),
+                        "uit".into(),
+                    ]);
+                    let layout = self.get_window_size(frame.size());
 
-                frame.render_widget(player_stats, layout[0]);
-                frame.render_widget(
-                    Tui::stylize_statusbar(statusbar_text, StatusBarType::Normal),
-                    layout[1],
-                );
-            })
-            .unwrap();
+                    frame.render_widget(player_stats, layout[0]);
+                    frame.render_widget(
+                        Tui::stylize_statusbar(statusbar_text, StatusBarType::Normal),
+                        layout[1],
+                    );
+                })
+                .unwrap();
 
             match read_event().unwrap() {
                 Event::Key(key) => match key.code {
@@ -440,9 +480,9 @@ impl Tui {
                         'o' => return GameAction::NextPlayerPick,
                         'q' => return GameAction::Quit,
                         _ => (),
-                    }
+                    },
                     _ => (),
-                }
+                },
                 _ => (),
             }
         }
