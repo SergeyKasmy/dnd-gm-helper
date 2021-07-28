@@ -112,11 +112,13 @@ impl Tui {
         }
     }
 
-    fn get_window_size(&self, window: Rect) -> Vec<Rect> {
-        Layout::default()
+    fn get_window_size(&self, window: Rect) -> (Rect, Rect) {
+        let layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(10), Constraint::Length(1)].as_ref())
-            .split(window)
+            .split(window);
+
+        (layout[0], layout[1])
     }
 
     fn stylize_statusbar<'a, T: Into<Text<'a>>>(text: T, sbtype: StatusBarType) -> Paragraph<'a> {
@@ -209,13 +211,11 @@ impl Tui {
             let button_width = {
                 if !is_vertical {
                     // add all button text together
-                    let mut tmp = 0;
-                    for option in options.iter() {
-                        tmp += option.chars().count() as u16;
-                    }
-
-                    tmp += 4;
-                    tmp
+                    options
+                        .iter()
+                        .map(|item| item.chars().count() as u16)
+                        .sum::<u16>()
+                        + 4
                 } else {
                     // find the longest button text
                     options.iter().fold(0, |acc, item| {
@@ -261,9 +261,10 @@ impl Tui {
                         let buttons_rect = {
                             let offset = {
                                 let mut tmp = buttons_rect.width;
-                                for option in options.iter() {
-                                    tmp -= option.chars().count() as u16;
-                                }
+                                tmp -= options
+                                    .iter()
+                                    .map(|item| item.chars().count() as u16)
+                                    .sum::<u16>();
                                 // if more than out button, substract spacing between them
                                 if options.len() > 1 {
                                     tmp -= OFFSET_BETWEEN_BUTTONS * (options.len() as u16 - 1);
@@ -302,12 +303,10 @@ impl Tui {
                         }
                     } else {
                         for (i, option) in options.iter().enumerate() {
-                            let option_len = option.chars().count() as u16;
-                            let offset = (width - option_len) / 2;
                             let rect = {
                                 let mut tmp = buttons_rect.clone();
                                 tmp.y += i as u16;
-                                tmp.width = option_len;
+                                tmp.width = option.chars().count() as u16;
                                 tmp
                             };
 
@@ -329,10 +328,12 @@ impl Tui {
                     KeyCode::Enter => {
                         return currently_selected;
                     }
-                    KeyCode::Char(ch) => if let Some(num) = ch.to_digit(10) {
-                        let num = num as usize - 1;
-                        if num < options.len() {
-                            return num;
+                    KeyCode::Char(ch) => {
+                        if let Some(num) = ch.to_digit(10) {
+                            let num = num as usize - 1;
+                            if num < options.len() {
+                                return num;
+                            }
                         }
                     }
                     KeyCode::Right => {
@@ -427,28 +428,41 @@ impl Tui {
         self.messagebox_with_options(desc, &["OK"], false);
     }
 
-    pub fn draw_main_menu(&mut self) -> MainMenuAction {
+    pub fn draw_main_menu(&self) -> MainMenuAction {
         self.term.borrow_mut().clear().unwrap();
         loop {
             self.term
                 .borrow_mut()
                 .draw(|frame| {
-                    let layout = self.get_window_size(frame.size());
+                    let items = ["Start game", "Manage characters", "Save and quit"];
+                    let longest_len = items.iter().fold(0, |acc, item| {
+                        let len = item.chars().count();
+                        if len > acc {
+                            len
+                        } else {
+                            acc
+                        }
+                    });
+                    let list = List::new(
+                        items
+                            .iter()
+                            .map(|item| ListItem::new(*item))
+                            .collect::<Vec<ListItem>>(),
+                    );
 
-                    let items = [
-                        ListItem::new("1. Start game"),
-                        ListItem::new("2. Manage characters"),
-                        ListItem::new("3. Save and quit"),
-                    ];
-                    let list = List::new(items);
-
-                    frame.render_widget(list, layout[0]);
+                    let (win_rect, statusbar_rect) = self.get_window_size(frame.size());
+                    let menu_location = Tui::get_centered_box(
+                        win_rect,
+                        longest_len as u16 + 4,
+                        items.len() as u16 + 4,
+                    );
+                    frame.render_widget(list, menu_location);
                     frame.render_widget(
                         Tui::stylize_statusbar(
                             format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION")),
                             StatusBarType::Normal,
                         ),
-                        layout[1],
+                        statusbar_rect,
                     );
                 })
                 .unwrap();
@@ -525,12 +539,12 @@ impl Tui {
                         Span::styled("Q", style_underlined),
                         "uit".into(),
                     ]);
-                    let layout = self.get_window_size(frame.size());
+                    let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
 
-                    frame.render_widget(player_stats, layout[0]);
+                    frame.render_widget(player_stats, window_rect);
                     frame.render_widget(
                         Tui::stylize_statusbar(statusbar_text, StatusBarType::Normal),
-                        layout[1],
+                        statusbar_rect,
                     );
                 })
                 .unwrap();
@@ -756,8 +770,7 @@ impl Tui {
 
     pub fn get_money_amount(&self) -> i64 {
         loop {
-            let input =
-                self.messagebox_with_input_field("Add or remove money");
+            let input = self.messagebox_with_input_field("Add or remove money");
 
             let input: i64 = match input.parse() {
                 Ok(num) => num,
@@ -774,7 +787,19 @@ impl Tui {
     }
 
     pub fn pick_player<'a>(&self, players: &'a Players) -> &'a Player {
-        players.get(self.messagebox_with_options("Pick a player", players.iter().map(|x| x.name.as_str()).collect::<Vec<&str>>().as_slice(), true)).unwrap()
+        players
+            .get(
+                self.messagebox_with_options(
+                    "Pick a player",
+                    players
+                        .iter()
+                        .map(|x| x.name.as_str())
+                        .collect::<Vec<&str>>()
+                        .as_slice(),
+                    true,
+                ),
+            )
+            .unwrap()
     }
 
     // TODO: separate most logic out of the UI and into the backend
@@ -905,13 +930,13 @@ impl Tui {
             self.term
                 .borrow_mut()
                 .draw(|frame| {
-                    let layout = self.get_window_size(frame.size());
+                    let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
                     let tables = Layout::default()
                         .direction(Direction::Horizontal)
                         .constraints(
                             [Constraint::Percentage(20), Constraint::Percentage(80)].as_ref(),
                         )
-                        .split(layout[0]);
+                        .split(window_rect);
 
                     let player_list = List::new(player_list_items.clone())
                         .block(Block::default().title("Players").borders(Borders::ALL))
@@ -947,12 +972,12 @@ impl Tui {
                         };
                         frame.render_widget(
                             Tui::stylize_statusbar(statusbar_text, StatusBarType::Normal),
-                            layout[1],
+                            statusbar_rect,
                         );
                     } else {
                         frame.render_widget(
                             Tui::stylize_statusbar(errors.pop().unwrap(), StatusBarType::Error),
-                            layout[1],
+                            statusbar_rect,
                         );
                     }
 

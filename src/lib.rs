@@ -113,9 +113,10 @@ fn game_start(tui: &mut Tui, players: &mut Players) {
                     }
                     GameAction::ClearStatuses => player.statuses.clear(),
                     GameAction::ResetSkillsCD => {
-                        for skill in player.skills.iter_mut() {
-                            skill.available_after = 0;
-                        }
+                        player
+                            .skills
+                            .iter_mut()
+                            .for_each(|skill| skill.available_after = 0);
                     }
                     GameAction::ManageMoney => manage_money(tui, player),
                     GameAction::MakeTurn => {
@@ -139,22 +140,14 @@ fn use_skill(skill: &mut Skill) {
 }
 
 fn drain_status(player: &mut Player, status_type: StatusCooldownType) {
-    for status in player.statuses.iter_mut() {
-        if status.status_cooldown_type == status_type {
-            if status.duration > 0 {
-                status.duration = status.duration - 1;
-            }
+    // decrease all statuses duration with the status cooldown type provided
+    player.statuses.iter_mut().for_each(|status| {
+        if status.status_cooldown_type == status_type && status.duration > 0 {
+            status.duration -= 1
         }
-    }
-
-    let mut i = 0;
-    while i < player.statuses.len() {
-        if player.statuses[i].duration <= 0 {
-            player.statuses.remove(i);
-        } else {
-            i += 1;
-        }
-    }
+    });
+    // remove all statuses that have run out = retain all statuses that haven't yet run out
+    player.statuses.retain(|status| status.duration > 0);
 }
 
 fn choose_skill_and_use(tui: &mut Tui, skills: &mut Skills) {
@@ -173,32 +166,18 @@ fn choose_skill_and_use(tui: &mut Tui, skills: &mut Skills) {
                 }
                 break;
             }
-            None => todo!(),    //Tui::err("Number out of bounds"),
+            None => todo!(), //Tui::err("Number out of bounds"),
         }
     }
 }
 
 fn make_move(player: &mut Player) {
-    for skill in &mut player.skills {
+    player.skills.iter_mut().for_each(|skill| {
         if skill.available_after > 0 {
-            skill.available_after = skill.available_after - 1;
+            skill.available_after -= 1
         }
-    }
-
-    for status in &mut player.statuses {
-        if status.status_cooldown_type == StatusCooldownType::Normal && status.duration > 0 {
-            status.duration = status.duration - 1;
-        }
-    }
-
-    let mut i = 0;
-    while i < player.statuses.len() {
-        if player.statuses[i].duration <= 0 {
-            player.statuses.remove(i);
-        } else {
-            i += 1;
-        }
-    }
+    });
+    drain_status(player, StatusCooldownType::Normal);
 }
 
 fn add_status(term: &Tui, statuses: &mut Statuses) {
@@ -237,7 +216,7 @@ pub fn run() {
                 }
             };
         }
-        Err(er) => todo!(),     //Tui::err(&format!("Couldn't read from file: {}", er)),
+        Err(er) => todo!(), //Tui::err(&format!("Couldn't read from file: {}", er)),
     }
 
     let mut tui = Tui::new();
