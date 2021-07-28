@@ -205,7 +205,7 @@ impl Tui {
         desc: &str,
         options: &[&str],
         is_vertical: bool,
-    ) -> usize {
+    ) -> Option<usize> {
         let width = {
             let desc_width = desc.len() as u16 + 4;
             let button_width = {
@@ -325,51 +325,42 @@ impl Tui {
 
             match read_event().unwrap() {
                 Event::Key(key) => match key.code {
-                    KeyCode::Enter => {
-                        return currently_selected;
-                    }
+                    KeyCode::Enter => return Some(currently_selected),
                     KeyCode::Char(ch) => {
                         if let Some(num) = ch.to_digit(10) {
                             let num = num as usize - 1;
                             if num < options.len() {
-                                return num;
+                                return Some(num);
                             }
                         }
                     }
-                    KeyCode::Right => {
-                        if !is_vertical {
-                            if currently_selected >= options.len() - 1 {
-                                currently_selected = 0;
-                            } else {
-                                currently_selected += 1;
-                            }
+                    KeyCode::Esc => return None,
+                    KeyCode::Right if !is_vertical => {
+                        if currently_selected >= options.len() - 1 {
+                            currently_selected = 0;
+                        } else {
+                            currently_selected += 1;
                         }
                     }
-                    KeyCode::Left => {
-                        if !is_vertical {
-                            if currently_selected == 0 {
-                                currently_selected = options.len() - 1;
-                            } else {
-                                currently_selected -= 1;
-                            }
+                    KeyCode::Left if !is_vertical => {
+                        if currently_selected == 0 {
+                            currently_selected = options.len() - 1;
+                        } else {
+                            currently_selected -= 1;
                         }
                     }
-                    KeyCode::Down => {
-                        if is_vertical {
-                            if currently_selected >= options.len() - 1 {
-                                currently_selected = 0;
-                            } else {
-                                currently_selected += 1;
-                            }
+                    KeyCode::Down if is_vertical => {
+                        if currently_selected >= options.len() - 1 {
+                            currently_selected = 0;
+                        } else {
+                            currently_selected += 1;
                         }
                     }
-                    KeyCode::Up => {
-                        if is_vertical {
-                            if currently_selected == 0 {
-                                currently_selected = options.len() - 1;
-                            } else {
-                                currently_selected -= 1;
-                            }
+                    KeyCode::Up if is_vertical => {
+                        if currently_selected == 0 {
+                            currently_selected = options.len() - 1;
+                        } else {
+                            currently_selected -= 1;
                         }
                     }
                     _ => (),
@@ -419,7 +410,7 @@ impl Tui {
 
     pub fn messagebox_yn(&self, desc: &str) -> bool {
         match self.messagebox_with_options(desc, &["Yes", "No"], false) {
-            0 => true,
+            Some(0) => true,
             _ => false,
         }
     }
@@ -698,7 +689,6 @@ impl Tui {
     }
 
     pub fn choose_skill(&self, skills: &Skills) -> Option<u32> {
-        Some(
             self.messagebox_with_options(
                 "Select skill",
                 skills
@@ -707,8 +697,7 @@ impl Tui {
                     .collect::<Vec<&str>>()
                     .as_slice(),
                 true,
-            ) as u32,
-        )
+            ).map(|x| x as u32)
     }
 
     pub fn choose_status(&self) -> Option<Status> {
@@ -725,19 +714,21 @@ impl Tui {
             "#0 Stun",
         ];
 
-        let status_type = match self.messagebox_with_options("Choose a status", &status_list, true)
-        {
-            0 => StatusType::Discharge,
-            1 => StatusType::FireAttack,
-            2 => StatusType::FireShield,
-            3 => StatusType::IceShield,
-            4 => StatusType::Blizzard,
-            5 => StatusType::Fusion,
-            6 => StatusType::Luck,
-            7 => StatusType::Knockdown,
-            8 => StatusType::Poison,
-            9 => StatusType::Stun,
-            _ => unreachable!(),
+        let status_type = match self.messagebox_with_options("Choose a status", &status_list, true) {
+            Some(num) => match num {
+                0 => StatusType::Discharge,
+                1 => StatusType::FireAttack,
+                2 => StatusType::FireShield,
+                3 => StatusType::IceShield,
+                4 => StatusType::Blizzard,
+                5 => StatusType::Fusion,
+                6 => StatusType::Luck,
+                7 => StatusType::Knockdown,
+                8 => StatusType::Poison,
+                9 => StatusType::Stun,
+                _ => unreachable!(),
+            }
+            None => return None,
         };
 
         let status_cooldown_type = match self.messagebox_with_options(
@@ -745,10 +736,13 @@ impl Tui {
             &["Normal", "On getting attacked", "On attacking"],
             true,
         ) {
-            0 => StatusCooldownType::Normal,
-            1 => StatusCooldownType::Attacked,
-            2 => StatusCooldownType::Attacking,
-            _ => unreachable!(),
+            Some(num) => match num {
+                0 => StatusCooldownType::Normal,
+                1 => StatusCooldownType::Attacked,
+                2 => StatusCooldownType::Attacking,
+                _ => unreachable!(),
+            }
+            None => return None,
         };
 
         let duration = loop {
@@ -786,10 +780,8 @@ impl Tui {
         }
     }
 
-    pub fn pick_player<'a>(&self, players: &'a Players) -> &'a Player {
-        players
-            .get(
-                self.messagebox_with_options(
+    pub fn pick_player<'a>(&self, players: &'a Players) -> Option<&'a Player> {
+        return match self.messagebox_with_options(
                     "Pick a player",
                     players
                         .iter()
@@ -797,9 +789,10 @@ impl Tui {
                         .collect::<Vec<&str>>()
                         .as_slice(),
                     true,
-                ),
-            )
-            .unwrap()
+                ) {
+            Some(num) => Some(players.get(num).unwrap()),
+            None => None,
+        }
     }
 
     // TODO: separate most logic out of the UI and into the backend
