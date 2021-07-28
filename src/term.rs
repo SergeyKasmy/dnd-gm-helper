@@ -767,29 +767,8 @@ impl Tui {
         }
     }
 
-    pub fn pick_player(players: &Players) -> &Player {
-        todo!();
-        /*
-        disable_raw_mode().unwrap();
-        for (i, player) in players.iter().enumerate() {
-            println!("#{}. {}", i + 1, player.name);
-        }
-        enable_raw_mode().unwrap();
-
-        loop {
-            let num = loop {
-                match Tui::get_input_char().to_digit(10) {
-                    Some(num) => break (num - 1) as usize,
-                    None => (),
-                }
-            };
-
-            match players.get(num) {
-                Some(player) => return player,
-                None => (),
-            }
-        }
-        */
+    pub fn pick_player<'a>(&self, players: &'a Players) -> &'a Player {
+        players.get(self.messagebox_with_options("Pick a player", players.iter().map(|x| x.name.as_str()).collect::<Vec<&str>>().as_slice(), true)).unwrap()
     }
 
     // TODO: separate most logic out of the UI and into the backend

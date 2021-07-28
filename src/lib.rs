@@ -92,7 +92,7 @@ fn game_start(tui: &mut Tui, players: &mut Players) {
     let mut next_player = NextPlayerState::Default;
     'game: loop {
         if let NextPlayerState::Pending = next_player {
-            next_player = NextPlayerState::Picked(Tui::pick_player(&players));
+            next_player = NextPlayerState::Picked(tui.pick_player(&players));
         }
 
         for player in players.iter_mut() {
