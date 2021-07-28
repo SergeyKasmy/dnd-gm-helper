@@ -199,7 +199,12 @@ impl Tui {
         )
     }
 
-    pub fn messagebox_with_options(&self, desc: &str, options: Vec<&str>) -> usize {
+    pub fn messagebox_with_options(
+        &self,
+        desc: &str,
+        options: Vec<&str>,
+        is_vertical: bool,
+    ) -> usize {
         let width = {
             let desc_width = desc.len() as u16 + 4;
             let button_width = {
@@ -218,7 +223,7 @@ impl Tui {
                 button_width
             }
         };
-        let height = 7;
+        let height = if !is_vertical { 7 } else { 6 + options.len() as u16 };
 
         let mut currently_selected: usize = 0;
         loop {
@@ -234,7 +239,7 @@ impl Tui {
                     frame.render_widget(block.clone(), block_rect);
                     frame.render_widget(desc, desc_rect);
 
-                    {
+                    if !is_vertical {
                         const OFFSET_BETWEEN_BUTTONS: u16 = 3;
                         let buttons_rect = {
                             let offset = {
@@ -278,6 +283,26 @@ impl Tui {
 
                             frame.render_widget(button, rect);
                         }
+                    } else {
+                        for (i, option) in options.iter().enumerate() {
+                            let option_len = option.chars().count() as u16;
+                            let offset = (width - option_len) / 2;
+                            let rect = {
+                                let mut tmp = buttons_rect.clone();
+                                tmp.y += i as u16;
+                                tmp.width = option_len;
+                                tmp
+                            };
+
+                            let button_style = if i == currently_selected {
+                                Style::default().bg(Color::White).fg(Color::Black)
+                            } else {
+                                Style::default()
+                            };
+
+                            let button = Paragraph::new(*option).style(button_style);
+                            frame.render_widget(button, rect);
+                        }
                     }
                 })
                 .unwrap();
@@ -288,17 +313,39 @@ impl Tui {
                         return currently_selected;
                     }
                     KeyCode::Right => {
-                        if currently_selected > options.len() - 1 {
-                            currently_selected = 0;
-                        } else {
-                            currently_selected += 1;
+                        if !is_vertical {
+                            if currently_selected >= options.len() - 1 {
+                                currently_selected = 0;
+                            } else {
+                                currently_selected += 1;
+                            }
                         }
                     }
                     KeyCode::Left => {
-                        if currently_selected == 0 {
-                            currently_selected = options.len() - 1;
-                        } else {
-                            currently_selected -= 1;
+                        if !is_vertical {
+                            if currently_selected == 0 {
+                                currently_selected = options.len() - 1;
+                            } else {
+                                currently_selected -= 1;
+                            }
+                        }
+                    }
+                    KeyCode::Down => {
+                        if is_vertical {
+                            if currently_selected >= options.len() - 1 {
+                                currently_selected = 0;
+                            } else {
+                                currently_selected += 1;
+                            }
+                        }
+                    }
+                    KeyCode::Up => {
+                        if is_vertical {
+                            if currently_selected == 0 {
+                                currently_selected = options.len() - 1;
+                            } else {
+                                currently_selected -= 1;
+                            }
                         }
                     }
                     _ => (),
@@ -347,14 +394,14 @@ impl Tui {
     }
 
     pub fn messagebox_yn(&self, desc: &str) -> bool {
-        match self.messagebox_with_options(desc, vec!["Yes", "No"]) {
+        match self.messagebox_with_options(desc, vec!["Yes", "No"], false) {
             0 => true,
             _ => false,
         }
     }
 
     pub fn messagebox(&self, desc: &str) {
-        self.messagebox_with_options(desc, vec!["OK"]);
+        self.messagebox_with_options(desc, vec!["OK"], false);
     }
 
     pub fn draw_main_menu(&mut self) -> MainMenuAction {
