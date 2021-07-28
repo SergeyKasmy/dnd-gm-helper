@@ -104,7 +104,7 @@ fn game_start(tui: &mut Tui, players: &mut Players) {
             loop {
                 match tui.draw_game(&player) {
                     GameAction::UseSkill => choose_skill_and_use(tui, &mut player.skills),
-                    GameAction::AddStatus => add_status(&mut player.statuses),
+                    GameAction::AddStatus => add_status(tui, &mut player.statuses),
                     GameAction::DrainStatusAttacking => {
                         drain_status(player, StatusCooldownType::Attacking)
                     }
@@ -201,8 +201,8 @@ fn make_move(player: &mut Player) {
     }
 }
 
-fn add_status(statuses: &mut Statuses) {
-    if let Some(status) = Tui::choose_status() {
+fn add_status(term: &Tui, statuses: &mut Statuses) {
+    if let Some(status) = term.choose_status() {
         statuses.push(status);
     }
 }

@@ -107,7 +107,9 @@ pub struct Tui {
 impl Tui {
     pub fn new() -> Tui {
         crossterm::terminal::enable_raw_mode().unwrap();
-        Tui { term: RefCell::new(Terminal::new(CrosstermBackend::new(stdout())).unwrap()) }
+        Tui {
+            term: RefCell::new(Terminal::new(CrosstermBackend::new(stdout())).unwrap()),
+        }
     }
 
     fn get_window_size(&self, window: Rect) -> Vec<Rect> {
@@ -136,7 +138,8 @@ impl Tui {
                     Constraint::Length(offset_y),
                     Constraint::Length(height),
                     Constraint::Length(offset_y),
-                ].as_ref()
+                ]
+                .as_ref(),
             )
             .split(frame);
 
@@ -147,7 +150,8 @@ impl Tui {
                     Constraint::Length(offset_x),
                     Constraint::Length(width),
                     Constraint::Length(offset_x),
-                ].as_ref()
+                ]
+                .as_ref(),
             )
             .split(layout_x[1])[1]
     }
@@ -162,7 +166,8 @@ impl Tui {
                     Constraint::Length(1), // space
                     Constraint::Length(1), // buttons
                     Constraint::Length(2), // space + border
-                ].as_ref()
+                ]
+                .as_ref(),
             )
             .split(messagebox);
 
@@ -175,7 +180,8 @@ impl Tui {
                         Constraint::Length(2),
                         Constraint::Length(messagebox.width - 4),
                         Constraint::Length(2),
-                    ].as_ref()
+                    ]
+                    .as_ref(),
                 )
                 .split(layout_x[1])[1],
             Layout::default()
@@ -185,7 +191,8 @@ impl Tui {
                         Constraint::Length(2),
                         Constraint::Length(messagebox.width - 4),
                         Constraint::Length(2),
-                    ].as_ref()
+                    ]
+                    .as_ref(),
                 )
                 .split(layout_x[3])[1],
         )
@@ -218,7 +225,8 @@ impl Tui {
                         } else {
                             acc
                         }
-                    }) as u16 + 4
+                    }) as u16
+                        + 4
                 }
             };
 
@@ -228,7 +236,11 @@ impl Tui {
                 button_width
             }
         };
-        let height = if !is_vertical { 7 } else { 6 + options.len() as u16 };
+        let height = if !is_vertical {
+            7
+        } else {
+            6 + options.len() as u16
+        };
 
         let mut currently_selected: usize = 0;
         loop {
@@ -660,99 +672,65 @@ impl Tui {
                 Constraint::Percentage(25),
                 Constraint::Length(10),
                 Constraint::Percentage(25),
-            ].as_ref()
+            ]
+            .as_ref(),
         )
     }
 
     pub fn choose_skill(&self, skills: &Skills) -> Option<u32> {
-        /*
-        disable_raw_mode().unwrap();
-        for (i, skill) in skills.iter().enumerate() {
-            println!("#{}: {}", i + 1, skill.name);
-        }
-        enable_raw_mode().unwrap();
-
-        loop {
-            let input = Tui::get_input_char();
-            match input {
-                'q' => return None,
-                _ => match input.to_digit(10) {
-                    Some(num) => return Some(num),
-                    None => {
-                        Tui::err("Not a valid number");
-                        return None;
-                    }
-                },
-            }
-        }
-        */
-        Some(self.messagebox_with_options("Select skill", skills.iter().map(|skill| skill.name.as_str()).collect::<Vec<&str>>().as_slice(), true) as u32)
+        Some(
+            self.messagebox_with_options(
+                "Select skill",
+                skills
+                    .iter()
+                    .map(|skill| skill.name.as_str())
+                    .collect::<Vec<&str>>()
+                    .as_slice(),
+                true,
+            ) as u32,
+        )
     }
 
-    pub fn choose_status() -> Option<Status> {
-        todo!();
-        /*
-        disable_raw_mode().unwrap();
-        println!("Choose a status:");
-        println!("Buffs:");
-        println!("#1 Discharge");
-        println!("#2 Fire Attack");
-        println!("#3 Fire Shield");
-        println!("#4 Ice Shield");
-        println!("#5 Blizzard");
-        println!("#6 Fusion");
-        println!("#7 Luck");
-        println!("Debuffs:");
-        println!("#8 Knockdown");
-        println!("#9 Poison");
-        println!("#0 Stun");
-        enable_raw_mode().unwrap();
+    pub fn choose_status(&self) -> Option<Status> {
 
-        let status_type = loop {
-            match Tui::get_input_char() {
-                '1' => break StatusType::Discharge,
-                '2' => break StatusType::FireAttack,
-                '3' => break StatusType::FireShield,
-                '4' => break StatusType::IceShield,
-                '5' => break StatusType::Blizzard,
-                '6' => break StatusType::Fusion,
-                '7' => break StatusType::Luck,
-                '8' => break StatusType::Knockdown,
-                '9' => break StatusType::Poison,
-                '0' => break StatusType::Stun,
-                'q' => return None,
-                _ => continue,
-            };
+        let status_list = [
+            "#1 Discharge",
+            "#2 Fire Attack",
+            "#3 Fire Shield",
+            "#4 Ice Shield",
+            "#5 Blizzard",
+            "#6 Fusion",
+            "#7 Luck",
+            "#8 Knockdown",
+            "#9 Poison",
+            "#0 Stun",
+        ];
+
+        let status_type = match self.messagebox_with_options("Choose a status", &status_list, true) {
+                0 => StatusType::Discharge,
+                1 => StatusType::FireAttack,
+                2 => StatusType::FireShield,
+                3 => StatusType::IceShield,
+                4 => StatusType::Blizzard,
+                5 => StatusType::Fusion,
+                6 => StatusType::Luck,
+                7 => StatusType::Knockdown,
+                8 => StatusType::Poison,
+                9 => StatusType::Stun,
+                _ => unreachable!(),
         };
 
-        disable_raw_mode().unwrap();
-        println!("Status cooldown type (1 for normal, 2 for on getting attacked, 3 for attacking)");
-        enable_raw_mode().unwrap();
-        let status_cooldown_type = loop {
-            match Tui::get_input_char().to_digit(10) {
-                Some(num) => break num,
-                None => Tui::err("Not a valid number"),
-            }
+        let status_cooldown_type = match self.messagebox_with_options("Status cooldown type", &["Normal", "On getting attacked", "On attacking"], true) {
+            0 => StatusCooldownType::Normal,
+            1 => StatusCooldownType::Attacked,
+            2 => StatusCooldownType::Attacking,
+            _ => unreachable!(),
         };
 
-        let status_cooldown_type = match status_cooldown_type {
-            1 => StatusCooldownType::Normal,
-            2 => StatusCooldownType::Attacked,
-            3 => StatusCooldownType::Attacking,
-            _ => {
-                Tui::err("Not a valid cooldown type");
-                return None;
-            }
-        };
-
-        disable_raw_mode().unwrap();
-        print!("Enter status duration: ");
-        stdout().flush().unwrap();
-        enable_raw_mode().unwrap();
         let duration = loop {
-            match Tui::get_input_string().trim().parse::<u32>() {
+            match self.messagebox_with_input_field("Status duration").parse::<u32>() {
                 Ok(num) => break num,
-                Err(_) => Tui::err("Number out of bounds"),
+                Err(_) => self.messagebox("Not a valid number"),
             }
         };
 
@@ -761,7 +739,6 @@ impl Tui {
             status_cooldown_type,
             duration,
         })
-        */
     }
 
     pub fn get_money_amount() -> i64 {
