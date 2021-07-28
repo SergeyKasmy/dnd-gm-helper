@@ -117,7 +117,7 @@ fn game_start(tui: &mut Tui, players: &mut Players) {
                             skill.available_after = 0;
                         }
                     }
-                    GameAction::ManageMoney => manage_money(player),
+                    GameAction::ManageMoney => manage_money(tui, player),
                     GameAction::MakeTurn => {
                         make_move(player);
                         break;
@@ -207,8 +207,8 @@ fn add_status(term: &Tui, statuses: &mut Statuses) {
     }
 }
 
-fn manage_money(player: &mut Player) {
-    player.money = player.money + Tui::get_money_amount();
+fn manage_money(term: &Tui, player: &mut Player) {
+    player.money = player.money + term.get_money_amount();
 }
 
 pub fn run() {

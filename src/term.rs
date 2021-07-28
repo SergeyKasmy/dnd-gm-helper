@@ -692,7 +692,6 @@ impl Tui {
     }
 
     pub fn choose_status(&self) -> Option<Status> {
-
         let status_list = [
             "#1 Discharge",
             "#2 Fire Attack",
@@ -706,21 +705,26 @@ impl Tui {
             "#0 Stun",
         ];
 
-        let status_type = match self.messagebox_with_options("Choose a status", &status_list, true) {
-                0 => StatusType::Discharge,
-                1 => StatusType::FireAttack,
-                2 => StatusType::FireShield,
-                3 => StatusType::IceShield,
-                4 => StatusType::Blizzard,
-                5 => StatusType::Fusion,
-                6 => StatusType::Luck,
-                7 => StatusType::Knockdown,
-                8 => StatusType::Poison,
-                9 => StatusType::Stun,
-                _ => unreachable!(),
+        let status_type = match self.messagebox_with_options("Choose a status", &status_list, true)
+        {
+            0 => StatusType::Discharge,
+            1 => StatusType::FireAttack,
+            2 => StatusType::FireShield,
+            3 => StatusType::IceShield,
+            4 => StatusType::Blizzard,
+            5 => StatusType::Fusion,
+            6 => StatusType::Luck,
+            7 => StatusType::Knockdown,
+            8 => StatusType::Poison,
+            9 => StatusType::Stun,
+            _ => unreachable!(),
         };
 
-        let status_cooldown_type = match self.messagebox_with_options("Status cooldown type", &["Normal", "On getting attacked", "On attacking"], true) {
+        let status_cooldown_type = match self.messagebox_with_options(
+            "Status cooldown type",
+            &["Normal", "On getting attacked", "On attacking"],
+            true,
+        ) {
             0 => StatusCooldownType::Normal,
             1 => StatusCooldownType::Attacked,
             2 => StatusCooldownType::Attacking,
@@ -728,7 +732,10 @@ impl Tui {
         };
 
         let duration = loop {
-            match self.messagebox_with_input_field("Status duration").parse::<u32>() {
+            match self
+                .messagebox_with_input_field("Status duration")
+                .parse::<u32>()
+            {
                 Ok(num) => break num,
                 Err(_) => self.messagebox("Not a valid number"),
             }
@@ -741,48 +748,23 @@ impl Tui {
         })
     }
 
-    pub fn get_money_amount() -> i64 {
-        todo!();
-        /*
-        print!("Add or remove money (use + or - before the amount): ");
-        stdout().flush().unwrap();
-        let input = Tui::get_input_string().trim().to_string();
-        if input == "q" {
-            return 0;
+    pub fn get_money_amount(&self) -> i64 {
+        loop {
+            let input =
+                self.messagebox_with_input_field("Add or remove money");
+
+            let input: i64 = match input.parse() {
+                Ok(num) => num,
+                Err(_) => {
+                    self.messagebox(
+                        format!("{} is not a valid input. Good examples: 500, -68", input).as_str(),
+                    );
+                    continue;
+                }
+            };
+
+            return input;
         }
-
-        if input.len() < 2 {
-            Tui::err(&format!(
-                "{} is not a valid input. Good examples: +500, -69",
-                input
-            ));
-            return 0;
-        }
-
-        let mut op = '.';
-        let mut amount = String::new();
-
-        for (i, ch) in input.chars().enumerate() {
-            if i == 0 {
-                op = ch;
-            } else {
-                amount.push(ch);
-            }
-        }
-
-        let amount: i64 = match amount.parse() {
-            Ok(num) => num,
-            Err(_) => {
-                Tui::err("Not a valid number");
-                return 0;
-            }
-        };
-
-        return match op {
-            '-' => -amount,
-            '+' | _ => amount,
-        };
-        */
     }
 
     pub fn pick_player(players: &Players) -> &Player {
