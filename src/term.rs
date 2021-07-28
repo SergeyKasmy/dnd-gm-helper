@@ -329,6 +329,12 @@ impl Tui {
                     KeyCode::Enter => {
                         return currently_selected;
                     }
+                    KeyCode::Char(ch) => if let Some(num) = ch.to_digit(10) {
+                        let num = num as usize - 1;
+                        if num < options.len() {
+                            return num;
+                        }
+                    }
                     KeyCode::Right => {
                         if !is_vertical {
                             if currently_selected >= options.len() - 1 {
