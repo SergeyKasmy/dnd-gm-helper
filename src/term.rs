@@ -200,13 +200,26 @@ impl Tui {
         let width = {
             let desc_width = desc.len() as u16 + 4;
             let button_width = {
-                let mut tmp = 0;
-                for option in options.iter() {
-                    tmp += option.chars().count() as u16;
-                }
+                if !is_vertical {
+                    // add all button text together
+                    let mut tmp = 0;
+                    for option in options.iter() {
+                        tmp += option.chars().count() as u16;
+                    }
 
-                tmp += 4;
-                tmp
+                    tmp += 4;
+                    tmp
+                } else {
+                    // find the longest button text
+                    options.iter().fold(0, |acc, item| {
+                        let len = item.chars().count();
+                        if len > acc {
+                            len
+                        } else {
+                            acc
+                        }
+                    }) as u16 + 4
+                }
             };
 
             if desc_width > button_width {
