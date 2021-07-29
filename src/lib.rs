@@ -1,7 +1,10 @@
 mod term;
 
 use serde::{Deserialize, Serialize};
-use term::{CharacterMenuAction, CharacterMenuMode, GameAction, MainMenuAction, Tui};
+use term::{
+    action_enums::{CharacterMenuAction, GameAction, MainMenuAction},
+    CharacterMenuMode, Term,
+};
 
 type Players = Vec<Player>;
 type Skills = Vec<Skill>;
@@ -17,7 +20,7 @@ pub struct Player {
 }
 
 #[derive(Copy, Clone, Debug)]
-enum StatType {
+pub enum StatType {
     Strength,
     Dexterity,
     Poise,
@@ -26,6 +29,7 @@ enum StatType {
     Charisma,
 }
 
+// TODO: reimplement using HashMap with StatType as keys
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct Stats {
     strength: i64,
@@ -83,7 +87,7 @@ enum StatusCooldownType {
     Attacked,
 }
 
-fn game_start(tui: &mut Tui, players: &mut Players) {
+fn game_start(term: &mut Term, players: &mut Players) {
     enum NextPlayerState {
         Default,
         Pending,
@@ -92,7 +96,7 @@ fn game_start(tui: &mut Tui, players: &mut Players) {
     let mut next_player = NextPlayerState::Default;
     'game: loop {
         if let NextPlayerState::Pending = next_player {
-            if let Some(picked_player) = tui.pick_player(&players) {
+            if let Some(picked_player) = term.pick_player(&players) {
                 next_player = NextPlayerState::Picked(picked_player);
             }
         }
@@ -104,9 +108,9 @@ fn game_start(tui: &mut Tui, players: &mut Players) {
                 }
             }
             loop {
-                match tui.draw_game(&player) {
-                    GameAction::UseSkill => choose_skill_and_use(tui, &mut player.skills),
-                    GameAction::AddStatus => add_status(tui, &mut player.statuses),
+                match term.draw_game(&player) {
+                    GameAction::UseSkill => choose_skill_and_use(term, &mut player.skills),
+                    GameAction::AddStatus => add_status(term, &mut player.statuses),
                     GameAction::DrainStatusAttacking => {
                         drain_status(player, StatusCooldownType::Attacking)
                     }
@@ -120,7 +124,7 @@ fn game_start(tui: &mut Tui, players: &mut Players) {
                             .iter_mut()
                             .for_each(|skill| skill.available_after = 0);
                     }
-                    GameAction::ManageMoney => manage_money(tui, player),
+                    GameAction::ManageMoney => manage_money(term, player),
                     GameAction::MakeTurn => {
                         make_move(player);
                         break;
@@ -152,9 +156,9 @@ fn drain_status(player: &mut Player, status_type: StatusCooldownType) {
     player.statuses.retain(|status| status.duration > 0);
 }
 
-fn choose_skill_and_use(tui: &mut Tui, skills: &mut Skills) {
+fn choose_skill_and_use(term: &mut Term, skills: &mut Skills) {
     loop {
-        let input = match tui.choose_skill(&skills) {
+        let input = match term.choose_skill(&skills) {
             Some(num) => num as usize,
             None => return,
         };
@@ -164,11 +168,11 @@ fn choose_skill_and_use(tui: &mut Tui, skills: &mut Skills) {
                     use_skill(skill);
                 } else {
                     todo!();
-                    //Tui::err("Skill still on cooldown");
+                    //Term::err("Skill still on cooldown");
                 }
                 break;
             }
-            None => todo!(), //Tui::err("Number out of bounds"),
+            None => todo!(), //Term::err("Number out of bounds"),
         }
     }
 }
@@ -182,13 +186,13 @@ fn make_move(player: &mut Player) {
     drain_status(player, StatusCooldownType::Normal);
 }
 
-fn add_status(term: &Tui, statuses: &mut Statuses) {
+fn add_status(term: &Term, statuses: &mut Statuses) {
     if let Some(status) = term.choose_status() {
         statuses.push(status);
     }
 }
 
-fn manage_money(term: &Tui, player: &mut Player) {
+fn manage_money(term: &Term, player: &mut Player) {
     player.money = player.money + term.get_money_amount();
 }
 
@@ -202,7 +206,7 @@ pub fn run() {
                 Err(er) => {
                     todo!();
                     /*
-                    Tui::err(&format!("players.json is not a valid json file. {}", er));
+                    Term::err(&format!("players.json is not a valid json file. {}", er));
                     std::fs::copy(
                         "players.json",
                         format!(
@@ -218,14 +222,14 @@ pub fn run() {
                 }
             };
         }
-        Err(er) => todo!(), //Tui::err(&format!("Couldn't read from file: {}", er)),
+        Err(er) => todo!(), //Term::err(&format!("Couldn't read from file: {}", er)),
     }
 
-    let mut tui = Tui::new();
+    let mut term = Term::new();
     loop {
-        match tui.draw_main_menu() {
-            MainMenuAction::Play => game_start(&mut tui, &mut players),
-            MainMenuAction::Edit => character_menu(&mut tui, &mut players),
+        match term.draw_main_menu() {
+            MainMenuAction::Play => game_start(&mut term, &mut players),
+            MainMenuAction::Edit => character_menu(&mut term, &mut players),
             MainMenuAction::Quit => break,
         }
     }
@@ -233,7 +237,7 @@ pub fn run() {
     std::fs::write("players.json", serde_json::to_string(&players).unwrap()).unwrap();
 }
 
-fn character_menu(term: &mut Tui, players: &mut Players) {
+fn character_menu(term: &mut Term, players: &mut Players) {
     let mut last_selected = 0;
     loop {
         match term

@@ -1,3 +1,8 @@
+pub mod action_enums;
+mod player_field;
+
+use crate::term::action_enums::*;
+use crate::term::player_field::PlayerField;
 use crate::{Player, Players, Skill, Skills, StatType, Status, StatusCooldownType, StatusType};
 use crossterm::event::{read as read_event, Event, KeyCode};
 use std::cell::RefCell;
@@ -11,35 +16,6 @@ use tui::{
     Terminal,
 };
 
-type Term = Terminal<CrosstermBackend<Stdout>>;
-
-pub enum MainMenuAction {
-    Play,
-    Edit,
-    Quit,
-}
-
-pub enum GameAction {
-    UseSkill,
-    AddStatus,
-    DrainStatusAttacking,
-    DrainStatusAttacked,
-    ManageMoney,
-    ClearStatuses,
-    ResetSkillsCD,
-    MakeTurn,
-    SkipTurn,
-    NextPlayerPick,
-    Quit,
-}
-
-pub enum CharacterMenuAction {
-    Add,
-    Edit(usize),
-    Delete(usize),
-    Quit,
-}
-
 #[derive(Copy, Clone)]
 pub enum CharacterMenuMode {
     View(usize),
@@ -52,62 +28,14 @@ enum StatusBarType {
     Error,
 }
 
-#[derive(Copy, Clone)]
-enum PlayerField {
-    Name,
-    Stat(StatType),
-    SkillName(usize),
-    SkillCD(usize),
+pub struct Term {
+    term: RefCell<Terminal<CrosstermBackend<Stdout>>>,
 }
 
-impl PlayerField {
-    fn next(&self) -> PlayerField {
-        match self {
-            PlayerField::Name => PlayerField::Stat(StatType::Strength),
-            PlayerField::Stat(stat) => match stat {
-                StatType::Strength => PlayerField::Stat(StatType::Dexterity),
-                StatType::Dexterity => PlayerField::Stat(StatType::Poise),
-                StatType::Poise => PlayerField::Stat(StatType::Wisdom),
-                StatType::Wisdom => PlayerField::Stat(StatType::Intelligence),
-                StatType::Intelligence => PlayerField::Stat(StatType::Charisma),
-                StatType::Charisma => PlayerField::SkillName(0),
-            },
-            PlayerField::SkillName(i) => PlayerField::SkillCD(*i),
-            PlayerField::SkillCD(i) => PlayerField::SkillName(*i + 1),
-        }
-    }
-
-    fn prev(&self) -> PlayerField {
-        match self {
-            PlayerField::Name => PlayerField::Name,
-            PlayerField::Stat(stat) => match stat {
-                StatType::Strength => PlayerField::Name,
-                StatType::Dexterity => PlayerField::Stat(StatType::Strength),
-                StatType::Poise => PlayerField::Stat(StatType::Dexterity),
-                StatType::Wisdom => PlayerField::Stat(StatType::Poise),
-                StatType::Intelligence => PlayerField::Stat(StatType::Wisdom),
-                StatType::Charisma => PlayerField::Stat(StatType::Intelligence),
-            },
-            PlayerField::SkillName(i) => {
-                if *i == 0 {
-                    PlayerField::Stat(StatType::Charisma)
-                } else {
-                    PlayerField::SkillCD(*i - 1)
-                }
-            }
-            PlayerField::SkillCD(i) => PlayerField::SkillName(*i),
-        }
-    }
-}
-
-pub struct Tui {
-    term: RefCell<Term>,
-}
-
-impl Tui {
-    pub fn new() -> Tui {
+impl Term {
+    pub fn new() -> Term {
         crossterm::terminal::enable_raw_mode().unwrap();
-        Tui {
+        Term {
             term: RefCell::new(Terminal::new(CrosstermBackend::new(stdout())).unwrap()),
         }
     }
@@ -247,9 +175,9 @@ impl Tui {
             self.term
                 .borrow_mut()
                 .draw(|frame| {
-                    let block_rect = Tui::get_centered_box(frame.size(), width, height);
+                    let block_rect = Term::get_centered_box(frame.size(), width, height);
                     let (desc_rect, buttons_rect) =
-                        Tui::get_messagebox_text_input_locations(block_rect);
+                        Term::get_messagebox_text_input_locations(block_rect);
 
                     let block = Block::default().borders(Borders::ALL);
                     let desc = Paragraph::new(desc).alignment(Alignment::Center);
@@ -379,9 +307,9 @@ impl Tui {
             self.term
                 .borrow_mut()
                 .draw(|frame| {
-                    let block_rect = Tui::get_centered_box(frame.size(), width, height);
+                    let block_rect = Term::get_centered_box(frame.size(), width, height);
                     let (desc_rect, input_rect) =
-                        Tui::get_messagebox_text_input_locations(block_rect);
+                        Term::get_messagebox_text_input_locations(block_rect);
 
                     let block = Block::default().borders(Borders::ALL);
                     let desc = Paragraph::new(desc).alignment(Alignment::Center);
@@ -442,14 +370,14 @@ impl Tui {
                     );
 
                     let (win_rect, statusbar_rect) = self.get_window_size(frame.size());
-                    let menu_location = Tui::get_centered_box(
+                    let menu_location = Term::get_centered_box(
                         win_rect,
                         longest_len as u16 + 4,
                         items.len() as u16 + 4,
                     );
                     frame.render_widget(list, menu_location);
                     frame.render_widget(
-                        Tui::stylize_statusbar(
+                        Term::stylize_statusbar(
                             format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION")),
                             StatusBarType::Normal,
                         ),
@@ -487,7 +415,7 @@ impl Tui {
             self.term
                 .borrow_mut()
                 .draw(|frame| {
-                    let player_stats = Tui::player_stats_table(player, None);
+                    let player_stats = Term::player_stats_table(player, None);
                     let delimiter = Span::raw(" | ");
                     let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
                     let statusbar_text = Spans::from(vec![
@@ -534,7 +462,7 @@ impl Tui {
 
                     frame.render_widget(player_stats, window_rect);
                     frame.render_widget(
-                        Tui::stylize_statusbar(statusbar_text, StatusBarType::Normal),
+                        Term::stylize_statusbar(statusbar_text, StatusBarType::Normal),
                         statusbar_rect,
                     );
                 })
@@ -689,15 +617,16 @@ impl Tui {
     }
 
     pub fn choose_skill(&self, skills: &Skills) -> Option<u32> {
-            self.messagebox_with_options(
-                "Select skill",
-                skills
-                    .iter()
-                    .map(|skill| skill.name.as_str())
-                    .collect::<Vec<&str>>()
-                    .as_slice(),
-                true,
-            ).map(|x| x as u32)
+        self.messagebox_with_options(
+            "Select skill",
+            skills
+                .iter()
+                .map(|skill| skill.name.as_str())
+                .collect::<Vec<&str>>()
+                .as_slice(),
+            true,
+        )
+        .map(|x| x as u32)
     }
 
     pub fn choose_status(&self) -> Option<Status> {
@@ -714,7 +643,8 @@ impl Tui {
             "#0 Stun",
         ];
 
-        let status_type = match self.messagebox_with_options("Choose a status", &status_list, true) {
+        let status_type = match self.messagebox_with_options("Choose a status", &status_list, true)
+        {
             Some(num) => match num {
                 0 => StatusType::Discharge,
                 1 => StatusType::FireAttack,
@@ -727,7 +657,7 @@ impl Tui {
                 8 => StatusType::Poison,
                 9 => StatusType::Stun,
                 _ => unreachable!(),
-            }
+            },
             None => return None,
         };
 
@@ -741,7 +671,7 @@ impl Tui {
                 1 => StatusCooldownType::Attacked,
                 2 => StatusCooldownType::Attacking,
                 _ => unreachable!(),
-            }
+            },
             None => return None,
         };
 
@@ -782,17 +712,17 @@ impl Tui {
 
     pub fn pick_player<'a>(&self, players: &'a Players) -> Option<&'a Player> {
         return match self.messagebox_with_options(
-                    "Pick a player",
-                    players
-                        .iter()
-                        .map(|x| x.name.as_str())
-                        .collect::<Vec<&str>>()
-                        .as_slice(),
-                    true,
-                ) {
+            "Pick a player",
+            players
+                .iter()
+                .map(|x| x.name.as_str())
+                .collect::<Vec<&str>>()
+                .as_slice(),
+            true,
+        ) {
             Some(num) => Some(players.get(num).unwrap()),
             None => None,
-        }
+        };
     }
 
     // TODO: separate most logic out of the UI and into the backend
@@ -964,12 +894,12 @@ impl Tui {
                             }
                         };
                         frame.render_widget(
-                            Tui::stylize_statusbar(statusbar_text, StatusBarType::Normal),
+                            Term::stylize_statusbar(statusbar_text, StatusBarType::Normal),
                             statusbar_rect,
                         );
                     } else {
                         frame.render_widget(
-                            Tui::stylize_statusbar(errors.pop().unwrap(), StatusBarType::Error),
+                            Term::stylize_statusbar(errors.pop().unwrap(), StatusBarType::Error),
                             statusbar_rect,
                         );
                     }
@@ -978,12 +908,12 @@ impl Tui {
 
                     if let Some(num) = player_list_state.selected() {
                         /*
-                        let paragraph = Paragraph::new(Tui::print_player_stats(&players[num]))
+                        let paragraph = Paragraph::new(Term::print_player_stats(&players[num]))
                             .block(Block::default().title("Player stats").borders(Borders::ALL));
 
                         frame.render_widget(paragraph, tables[1]);
                         */
-                        frame.render_widget(Tui::player_stats_table(&players[num], add_mode_current_field), tables[1]);
+                        frame.render_widget(Term::player_stats_table(&players[num], add_mode_current_field), tables[1]);
                     }
                 })
                 .unwrap();
