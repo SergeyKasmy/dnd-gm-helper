@@ -136,6 +136,7 @@ impl Term {
         options: &[&str],
         is_vertical: bool,
     ) -> Option<usize> {
+        self.term.borrow_mut().clear().unwrap();
         if options.is_empty() { panic!("Can't show a dialog with no buttons") }
         let width = {
             let desc_width = desc.len() as u16 + 4;
@@ -287,6 +288,7 @@ impl Term {
     }
 
     pub fn messagebox_with_input_field(&self, desc: &str) -> String {
+        self.term.borrow_mut().clear().unwrap();
         let width = desc.len() as u16 + 4;
         let height = 7;
         let mut buffer = String::new();

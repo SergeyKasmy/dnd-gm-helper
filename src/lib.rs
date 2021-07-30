@@ -167,12 +167,11 @@ fn choose_skill_and_use(term: &mut Term, skills: &mut Skills) {
                 if skill.available_after == 0 {
                     use_skill(skill);
                 } else {
-                    todo!();
-                    //Term::err("Skill still on cooldown");
+                    term.messagebox("Skill still on cooldown");
                 }
                 break;
             }
-            None => todo!(), //Term::err("Number out of bounds"),
+            None => term.messagebox("Number out of bounds"),
         }
     }
 }
@@ -197,35 +196,36 @@ fn manage_money(term: &Term, player: &mut Player) {
 }
 
 pub fn run() {
+    let mut term = Term::new();
     let mut players: Players = vec![];
     let file_contents = std::fs::read_to_string("players.json");
     match file_contents {
         Ok(json) => {
             match serde_json::from_str(&json) {
                 Ok(data) => players = data,
-                Err(er) => {
-                    todo!();
-                    /*
-                    Term::err(&format!("players.json is not a valid json file. {}", er));
-                    std::fs::copy(
-                        "players.json",
-                        format!(
-                            "players.json.bak-{}",
-                            std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap()
-                                .as_secs()
-                        ),
-                    )
-                    .unwrap();
-                    */
+                Err(_) => {
+                    match term.messagebox_yn("The database is corrupted. Continue?") {
+                        true => {
+                            std::fs::copy(
+                                "players.json",
+                                format!(
+                                    "players.json.bak-{}",
+                                    std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_secs()
+                                ),
+                            )
+                            .unwrap();
+                        }
+                        false => return,
+                    }
                 }
             };
         }
-        Err(er) => () // todo!(), //Term::err(&format!("Couldn't read from file: {}", er)),
+        Err(_) => (),
     }
 
-    let mut term = Term::new();
     loop {
         match term.draw_main_menu() {
             MainMenuAction::Play => game_start(&mut term, &mut players),
