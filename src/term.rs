@@ -20,9 +20,9 @@ use tui::{
 
 #[derive(Copy, Clone)]
 pub enum CharacterMenuMode {
-    View(usize),
+    View { selected: Option<usize> },
     Add,
-    Edit(usize),
+    Edit { to_edit: usize },
 }
 
 enum StatusBarType {
@@ -136,6 +136,7 @@ impl Term {
         options: &[&str],
         is_vertical: bool,
     ) -> Option<usize> {
+        if options.is_empty() { panic!("Can't show a dialog with no buttons") }
         let width = {
             let desc_width = desc.len() as u16 + 4;
             let button_width = {
@@ -172,7 +173,8 @@ impl Term {
             6 + options.len() as u16
         };
 
-        let mut currently_selected: usize = 0;
+        let mut state = ListState::default();
+        state.select(Some(0));
         loop {
             self.term
                 .borrow_mut()
@@ -210,7 +212,7 @@ impl Term {
                         };
 
                         for (i, option) in options.iter().enumerate() {
-                            let button_style = if i == currently_selected {
+                            let button_style = if i == state.selected().unwrap_or(0) {
                                 Style::default().bg(Color::White).fg(Color::Black)
                             } else {
                                 Style::default()
@@ -240,7 +242,7 @@ impl Term {
                                 tmp
                             };
 
-                            let button_style = if i == currently_selected {
+                            let button_style = if i == state.selected().unwrap_or(0) {
                                 Style::default().bg(Color::White).fg(Color::Black)
                             } else {
                                 Style::default()
@@ -255,7 +257,7 @@ impl Term {
 
             match read_event().unwrap() {
                 Event::Key(key) => match key.code {
-                    KeyCode::Enter => return Some(currently_selected),
+                    KeyCode::Enter => return Some(state.selected().unwrap_or(0)),
                     KeyCode::Char(ch) => {
                         if let Some(num) = ch.to_digit(10) {
                             let num = num as usize - 1;
@@ -266,32 +268,16 @@ impl Term {
                     }
                     KeyCode::Esc => return None,
                     KeyCode::Right if !is_vertical => {
-                        if currently_selected >= options.len() - 1 {
-                            currently_selected = 0;
-                        } else {
-                            currently_selected += 1;
-                        }
+                        state.next(options.len());
                     }
                     KeyCode::Left if !is_vertical => {
-                        if currently_selected == 0 {
-                            currently_selected = options.len() - 1;
-                        } else {
-                            currently_selected -= 1;
-                        }
+                        state.prev(options.len());
                     }
                     KeyCode::Down if is_vertical => {
-                        if currently_selected >= options.len() - 1 {
-                            currently_selected = 0;
-                        } else {
-                            currently_selected += 1;
-                        }
+                        state.next(options.len());
                     }
                     KeyCode::Up if is_vertical => {
-                        if currently_selected == 0 {
-                            currently_selected = options.len() - 1;
-                        } else {
-                            currently_selected -= 1;
-                        }
+                        state.prev(options.len());
                     }
                     _ => (),
                 },
@@ -351,11 +337,13 @@ impl Term {
 
     pub fn draw_main_menu(&self) -> MainMenuAction {
         self.term.borrow_mut().clear().unwrap();
+        let items = ["Start game", "Manage characters", "Save and quit"];
+        let mut list_state = ListState::default();
+        list_state.select(Some(0));
         loop {
             self.term
                 .borrow_mut()
                 .draw(|frame| {
-                    let items = ["Start game", "Manage characters", "Save and quit"];
                     let longest_len = items.iter().fold(0, |acc, item| {
                         let len = item.chars().count();
                         if len > acc {
@@ -369,7 +357,7 @@ impl Term {
                             .iter()
                             .map(|item| ListItem::new(*item))
                             .collect::<Vec<ListItem>>(),
-                    );
+                    ).highlight_style(Style::default().bg(Color::White).fg(Color::Black));
 
                     let (win_rect, statusbar_rect) = self.get_window_size(frame.size());
                     let menu_location = Term::get_centered_box(
@@ -377,7 +365,7 @@ impl Term {
                         longest_len as u16 + 4,
                         items.len() as u16 + 4,
                     );
-                    frame.render_widget(list, menu_location);
+                    frame.render_stateful_widget(list, menu_location, &mut list_state);
                     frame.render_widget(
                         Term::stylize_statusbar(
                             format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION")),
@@ -405,6 +393,22 @@ impl Term {
                         }
                         _ => (),
                     },
+                    KeyCode::Down => {
+                        list_state.next(items.len());
+                    }
+                    KeyCode::Up => {
+                        list_state.prev(items.len());
+                    }
+                    KeyCode::Enter => {
+                        if let Some(i) = list_state.selected() {
+                            return match i {
+                                0 => MainMenuAction::Play,
+                                1 => MainMenuAction::Edit,
+                                2 => MainMenuAction::Quit,
+                                _ => unreachable!(),
+                            }
+                        }
+                    }
                     _ => (),
                 },
                 _ => (),
@@ -737,7 +741,7 @@ impl Term {
         let mut add_mode_current_field: Option<PlayerField> = None;
         let mut add_mode_buffer: Option<String> = None;
 
-        if let CharacterMenuMode::Add | CharacterMenuMode::Edit(_) = mode {
+        if let CharacterMenuMode::Add | CharacterMenuMode::Edit { to_edit: _ } = mode {
             // add an empty entry we are going to modify next
             if let CharacterMenuMode::Add = mode {
                 players.push(Player::default());
@@ -748,9 +752,30 @@ impl Term {
 
         let mut errors: Vec<String> = Vec::new();
         let mut player_list_state = ListState::default();
+        
+        // default currently selected entry for each mode
+        player_list_state.select(match mode {
+            CharacterMenuMode::View { selected } => {
+                if let Some(num) = selected {
+                    Some(num)
+                // if none is selected, select the first one if the list isn't empty
+                } else if !players.is_empty() {
+                    Some(0)
+                } else {
+                // and don't select any if it is
+                    None
+                }
+            }
+            CharacterMenuMode::Add => {
+                // always select the last/currenty in process of adding entry
+                Some(players.len() - 1)
+            }
+            CharacterMenuMode::Edit { to_edit: i } => Some(i),
+        });
+
         loop {
             // stupid workaround to match both Add and Edit(i) at once
-            if let (CharacterMenuMode::Add, i) | (CharacterMenuMode::Edit(i), _) = (mode, 0) {
+            if let (CharacterMenuMode::Add, i) | (CharacterMenuMode::Edit { to_edit: i }, _) = (mode, 0) {
                 let current_player = if let CharacterMenuMode::Add = mode {
                     players.last_mut().unwrap()
                 } else {
@@ -831,26 +856,6 @@ impl Term {
                 player_list_items.push(ListItem::new(player.name.clone()));
             }
 
-            // default currently selected entry for each mode
-            player_list_state.select(match mode {
-                CharacterMenuMode::View(i) => {
-                    // select the first entry if the list isn't empty
-                    if player_list_items.len() > 0 {
-                        if let None = player_list_state.selected() {
-                            Some(i)
-                        } else {
-                            player_list_state.selected()
-                        }
-                    } else {
-                        player_list_state.selected()
-                    }
-                }
-                CharacterMenuMode::Add => {
-                    // always select the last/currenty in process of adding entry
-                    Some(player_list_items.len() - 1)
-                }
-                CharacterMenuMode::Edit(i) => Some(i),
-            });
 
             self.term
                 .borrow_mut()
@@ -872,7 +877,7 @@ impl Term {
 
                     if errors.is_empty() {
                         let statusbar_text = match mode {
-                            CharacterMenuMode::View(_) => {
+                            CharacterMenuMode::View { selected: _ } => {
                                 Spans::from(vec![
                                     " ".into(),
                                     Span::styled("A", style_underlined),
@@ -891,7 +896,7 @@ impl Term {
                             CharacterMenuMode::Add => {
                                 Spans::from("Add mode. Press Enter, Up, or down arrows to navigate | ESC to quit")
                             }
-                            CharacterMenuMode::Edit(_) => {
+                            CharacterMenuMode::Edit { to_edit: _ } => {
                                 Spans::from("Edit mode. Press Up or down arrows to navigate | Enter or ESC to quit")
                             }
                         };
@@ -909,12 +914,6 @@ impl Term {
                     frame.render_stateful_widget(player_list, tables[0], &mut player_list_state);
 
                     if let Some(num) = player_list_state.selected() {
-                        /*
-                        let paragraph = Paragraph::new(Term::print_player_stats(&players[num]))
-                            .block(Block::default().title("Player stats").borders(Borders::ALL));
-
-                        frame.render_widget(paragraph, tables[1]);
-                        */
                         frame.render_widget(Term::player_stats_table(&players[num], add_mode_current_field), tables[1]);
                     }
                 })
@@ -922,7 +921,7 @@ impl Term {
 
             if let Event::Key(key) = read_event().unwrap() {
                 match mode {
-                    CharacterMenuMode::View(_) => match key.code {
+                    CharacterMenuMode::View { selected: _ } => match key.code {
                         KeyCode::Char(ch) => match ch {
                             'a' => return Some(CharacterMenuAction::Add),
                             'e' => {
@@ -939,46 +938,14 @@ impl Term {
                             _ => (),
                         },
                         KeyCode::Down => {
-                            let i = match player_list_state.selected() {
-                                Some(i) => {
-                                    if i >= player_list_items.len() - 1 {
-                                        Some(0)
-                                    } else {
-                                        Some(i + 1)
-                                    }
-                                }
-                                None => {
-                                    if player_list_items.len() > 1 {
-                                        Some(0)
-                                    } else {
-                                        None
-                                    }
-                                }
-                            };
-                            player_list_state.select(i);
+                            player_list_state.next(player_list_items.len());
                         }
                         KeyCode::Up => {
-                            let i = match player_list_state.selected() {
-                                Some(i) => {
-                                    if i == 0 {
-                                        Some(player_list_items.len() - 1)
-                                    } else {
-                                        Some(i - 1)
-                                    }
-                                }
-                                None => {
-                                    if player_list_items.len() > 1 {
-                                        Some(0)
-                                    } else {
-                                        None
-                                    }
-                                }
-                            };
-                            player_list_state.select(i);
+                            player_list_state.prev(player_list_items.len());
                         }
                         _ => (),
                     },
-                    CharacterMenuMode::Add | CharacterMenuMode::Edit(_) => match key.code {
+                    CharacterMenuMode::Add | CharacterMenuMode::Edit { to_edit: _ } => match key.code {
                         KeyCode::Char(ch) => {
                             if let None = add_mode_buffer {
                                 add_mode_buffer = Some(String::new());
@@ -991,6 +958,8 @@ impl Term {
                             add_mode_buffer = None;
                         }
                         KeyCode::Down => {
+                            // TODO: merge logic with ::Enter. Currently there are no checks if the
+                            // input is valid
                             *add_mode_current_field.as_mut().unwrap() =
                                 add_mode_current_field.as_ref().unwrap().next();
                             add_mode_buffer = None;
@@ -1000,6 +969,7 @@ impl Term {
                         }
                         KeyCode::Enter => {
                             if let CharacterMenuMode::Add = mode {
+                                // TODO: don't calculate the next if we're going to skip
                                 let mut next =
                                     Some(add_mode_current_field.as_ref().unwrap().next());
 
@@ -1011,7 +981,7 @@ impl Term {
                                         // TODO: somehow avoid nest matching mode twice
                                         let current_player_num = match mode {
                                             CharacterMenuMode::Add => players.len() - 1,
-                                            CharacterMenuMode::Edit(num) => num,
+                                            CharacterMenuMode::Edit { to_edit: num } => num,
                                             _ => unreachable!(),
                                         };
                                         players[current_player_num]
@@ -1019,8 +989,7 @@ impl Term {
                                             .remove(current_skill_num);
                                         next = None;
                                     }
-                                // don't assume a default skill cd, just don't do anything
-                                } else if let Some(PlayerField::SkillCD(_)) = add_mode_current_field
+                                } else if let Some(_) = add_mode_current_field
                                 {
                                     if add_mode_buffer.as_ref().unwrap().is_empty() {
                                         continue;
@@ -1029,7 +998,7 @@ impl Term {
 
                                 add_mode_current_field = next;
                                 add_mode_buffer = None;
-                            } else if let CharacterMenuMode::Edit(_) = mode {
+                            } else if let CharacterMenuMode::Edit { to_edit: _ } = mode {
                                 return None;
                             }
                         }

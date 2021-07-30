@@ -222,7 +222,7 @@ pub fn run() {
                 }
             };
         }
-        Err(er) => todo!(), //Term::err(&format!("Couldn't read from file: {}", er)),
+        Err(er) => () // todo!(), //Term::err(&format!("Couldn't read from file: {}", er)),
     }
 
     let mut term = Term::new();
@@ -238,23 +238,24 @@ pub fn run() {
 }
 
 fn character_menu(term: &mut Term, players: &mut Players) {
-    let mut last_selected = 0;
+    let mut last_selected = None;
     loop {
         match term
-            .draw_character_menu(CharacterMenuMode::View(last_selected), players)
+            .draw_character_menu(CharacterMenuMode::View { selected: last_selected }, players)
             .unwrap()
         {
             CharacterMenuAction::Add => {
                 term.draw_character_menu(CharacterMenuMode::Add, players);
+                last_selected = Some(players.len() - 1);
             }
             CharacterMenuAction::Edit(num) => {
-                term.draw_character_menu(CharacterMenuMode::Edit(num), players);
-                last_selected = num;
+                term.draw_character_menu(CharacterMenuMode::Edit { to_edit: num }, players);
+                last_selected = Some(num);
             }
             CharacterMenuAction::Delete(num) => {
                 if term.messagebox_yn("Are you sure?") {
                     players.remove(num);
-                    last_selected = num - 1;
+                    last_selected = num.checked_sub(1);
                 }
             }
             CharacterMenuAction::Quit => break,
