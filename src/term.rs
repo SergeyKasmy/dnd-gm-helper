@@ -1,8 +1,10 @@
 pub mod action_enums;
 mod player_field;
+mod list_state_next;
 
-use crate::term::action_enums::*;
+use crate::term::action_enums::{MainMenuAction, GameAction, CharacterMenuAction};
 use crate::term::player_field::PlayerField;
+use crate::term::list_state_next::ListStateNext;
 use crate::{Player, Players, Skill, Skills, StatType, Status, StatusCooldownType, StatusType};
 use crossterm::event::{read as read_event, Event, KeyCode};
 use std::cell::RefCell;
