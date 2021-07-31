@@ -558,7 +558,21 @@ impl Term {
                         )
                     }
                 }
-                (_, _) => (Style::default(), player.stats.strength.to_string()),
+                (_, _) => (
+                            Style::default(),
+                            match field_type {
+                                PlayerField::Stat(StatType::Strength) => player.stats.strength,
+                                PlayerField::Stat(StatType::Dexterity) => player.stats.dexterity,
+                                PlayerField::Stat(StatType::Poise) => player.stats.poise,
+                                PlayerField::Stat(StatType::Wisdom) => player.stats.wisdom,
+                                PlayerField::Stat(StatType::Intelligence) => {
+                                    player.stats.intelligence
+                                }
+                                PlayerField::Stat(StatType::Charisma) => player.stats.charisma,
+                                _ => unreachable!(),
+                            }
+                            .to_string(),
+                        ),
             };
             rows.push(
                 Row::new::<[Cell; 2]>([field_type.to_string().into(), stat.into()]).style(style),
@@ -896,12 +910,16 @@ impl Term {
                             }
                         }
                         KeyCode::Up => {
-                            todo!();
+                                return Some(CharacterMenuAction::Editing {
+                                    buffer: add_mode_buffer.unwrap(),
+                                    field_offset: Some(-1),
+                                });
                         }
                         KeyCode::Down => {
-                            // TODO: merge logic with ::Enter. Currently there are no checks if the
-                            // input is valid
-                            todo!();
+                                return Some(CharacterMenuAction::Editing {
+                                    buffer: add_mode_buffer.unwrap(),
+                                    field_offset: Some(1),
+                                });
                         }
                         KeyCode::Backspace => {
                             let buffer = add_mode_buffer.as_mut().unwrap();
@@ -927,6 +945,7 @@ impl Term {
 
                                 return Some(CharacterMenuAction::Editing {
                                     buffer: add_mode_buffer.unwrap(),
+                                    field_offset: None,
                                 });
                             }
                         }

@@ -291,14 +291,21 @@ fn edit_player(term: &Term, players: &mut Players, id: usize) {
             },
             players,
         ) {
-            Some(CharacterMenuAction::Editing { buffer }) => {
+            Some(CharacterMenuAction::Editing {
+                buffer,
+                field_offset,
+            }) => {
                 let player = players.get_mut(id).unwrap();
                 match selected_field {
                     PlayerField::Name => {
                         let _ = std::mem::replace(&mut player.name, buffer);
 
                         // TODO: modify inplace
-                        selected_field = selected_field.next();
+                        selected_field = match field_offset.unwrap_or(1) {
+                            1 => selected_field.next(),
+                            -1 => selected_field.prev(),
+                            _ => selected_field,
+                        }
                     }
                     PlayerField::Stat(stat) => {
                         let current_stat = match stat {
@@ -313,23 +320,36 @@ fn edit_player(term: &Term, players: &mut Players, id: usize) {
                         match buffer.parse::<i64>() {
                             Ok(result) => {
                                 *current_stat = result;
-                                selected_field = selected_field.next();
+                                selected_field = match field_offset.unwrap_or(1) {
+                                    1 => selected_field.next(),
+                                    -1 => selected_field.prev(),
+                                    _ => selected_field,
+                                }
                             }
-                            Err(_) => todo!(),
+                            Err(_) => (),
                         }
                     }
                     PlayerField::SkillName(skill_id) => {
+                        // TODO: pop a skill if the buffer is empty
                         let _ = std::mem::replace(&mut player.skills[skill_id].name, buffer);
-                        selected_field = selected_field.next();
+                        selected_field = match field_offset.unwrap_or(1) {
+                            1 => selected_field.next(),
+                            -1 => selected_field.prev(),
+                            _ => selected_field,
+                        }
                     }
                     PlayerField::SkillCD(skill_id) => {
                         match buffer.parse::<u32>() {
                             Ok(num) => {
                                 player.skills[skill_id].cooldown = num;
                             }
-                            Err(_) => todo!(),
+                            Err(_) => (),
                         }
-                        selected_field = selected_field.next();
+                        selected_field = match field_offset.unwrap_or(1) {
+                            1 => selected_field.next(),
+                            -1 => selected_field.prev(),
+                            _ => selected_field,
+                        }
                     }
                 }
             }
