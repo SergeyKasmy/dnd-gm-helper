@@ -1,4 +1,5 @@
 use crate::StatType;
+use std::fmt;
 
 #[derive(Copy, Clone)]
 pub enum PlayerField {
@@ -45,5 +46,22 @@ impl PlayerField {
             }
             PlayerField::SkillCD(i) => PlayerField::SkillName(*i),
         }
+    }
+}
+
+impl fmt::Display for PlayerField {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let out = match self {
+            PlayerField::Name => "Name",
+            PlayerField::Stat(StatType::Strength) => "Strength",
+            PlayerField::Stat(StatType::Dexterity) => "Dexterity",
+            PlayerField::Stat(StatType::Poise) => "Poise",
+            PlayerField::Stat(StatType::Wisdom) => "Wisdom",
+            PlayerField::Stat(StatType::Intelligence) => "Intelligence",
+            PlayerField::Stat(StatType::Charisma) => "Charisma",
+            PlayerField::SkillName(_) => "", // not intended for actual use
+            PlayerField::SkillCD(_) => "",
+        };
+        write!(formatter, "{}", out)
     }
 }
