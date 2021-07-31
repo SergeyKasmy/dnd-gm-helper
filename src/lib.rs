@@ -3,6 +3,7 @@ mod term;
 use serde::{Deserialize, Serialize};
 use term::{
     action_enums::{CharacterMenuAction, GameAction, MainMenuAction},
+    player_field::PlayerField,
     CharacterMenuMode, Term,
 };
 
@@ -19,7 +20,7 @@ pub struct Player {
     money: i64,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum StatType {
     Strength,
     Dexterity,
@@ -203,24 +204,22 @@ pub fn run() {
         Ok(json) => {
             match serde_json::from_str(&json) {
                 Ok(data) => players = data,
-                Err(_) => {
-                    match term.messagebox_yn("The database is corrupted. Continue?") {
-                        true => {
-                            std::fs::copy(
-                                "players.json",
-                                format!(
-                                    "players.json.bak-{}",
-                                    std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .unwrap()
-                                        .as_secs()
-                                ),
-                            )
-                            .unwrap();
-                        }
-                        false => return,
+                Err(_) => match term.messagebox_yn("The database is corrupted. Continue?") {
+                    true => {
+                        std::fs::copy(
+                            "players.json",
+                            format!(
+                                "players.json.bak-{}",
+                                std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_secs()
+                            ),
+                        )
+                        .unwrap();
                     }
-                }
+                    false => return,
+                },
             };
         }
         Err(_) => (),
@@ -237,19 +236,26 @@ pub fn run() {
     std::fs::write("players.json", serde_json::to_string(&players).unwrap()).unwrap();
 }
 
-fn character_menu(term: &mut Term, players: &mut Players) {
+fn character_menu(term: &Term, players: &mut Players) {
     let mut last_selected = None;
     loop {
         match term
-            .draw_character_menu(CharacterMenuMode::View { selected: last_selected }, players)
+            .draw_character_menu(
+                CharacterMenuMode::View {
+                    selected: last_selected,
+                },
+                players,
+            )
             .unwrap()
         {
             CharacterMenuAction::Add => {
-                term.draw_character_menu(CharacterMenuMode::Add, players);
-                last_selected = Some(players.len() - 1);
+                players.push(Player::default());
+                let id = players.len() - 1;
+                edit_player(term, players, id);
+                last_selected = Some(id);
             }
             CharacterMenuAction::Edit(num) => {
-                term.draw_character_menu(CharacterMenuMode::Edit { to_edit: num }, players);
+                edit_player(term, players, num);
                 last_selected = Some(num);
             }
             CharacterMenuAction::Delete(num) => {
@@ -258,7 +264,77 @@ fn character_menu(term: &mut Term, players: &mut Players) {
                     last_selected = num.checked_sub(1);
                 }
             }
-            CharacterMenuAction::Quit => break,
+            CharacterMenuAction::Quit | CharacterMenuAction::Editing { .. } => break,
+        }
+    }
+}
+
+fn edit_player(term: &Term, players: &mut Players, id: usize) {
+    let mut selected_field = PlayerField::Name; // TODO: maybe use something like new()?
+    loop {
+        //
+        // init fields if they don't exist
+        match selected_field {
+            PlayerField::SkillName(skill_id) | PlayerField::SkillCD(skill_id) => {
+                let player = players.get_mut(id).unwrap();
+                if let None = player.skills.get(skill_id) {
+                    player.skills.push(Skill::default())
+                }
+            }
+            _ => (),
+        }
+
+        match term.draw_character_menu(
+            CharacterMenuMode::Edit {
+                selected: id,
+                selected_field,
+            },
+            players,
+        ) {
+            Some(CharacterMenuAction::Editing { buffer }) => {
+                let player = players.get_mut(id).unwrap();
+                match selected_field {
+                    PlayerField::Name => {
+                        let _ = std::mem::replace(&mut player.name, buffer);
+
+                        // TODO: modify inplace
+                        selected_field = selected_field.next();
+                    }
+                    PlayerField::Stat(stat) => {
+                        let current_stat = match stat {
+                            StatType::Strength => &mut player.stats.strength,
+                            StatType::Dexterity => &mut player.stats.dexterity,
+                            StatType::Poise => &mut player.stats.poise,
+                            StatType::Wisdom => &mut player.stats.wisdom,
+                            StatType::Intelligence => &mut player.stats.intelligence,
+                            StatType::Charisma => &mut player.stats.charisma,
+                        };
+
+                        match buffer.parse::<i64>() {
+                            Ok(result) => {
+                                *current_stat = result;
+                                selected_field = selected_field.next();
+                            }
+                            Err(_) => todo!(),
+                        }
+                    }
+                    PlayerField::SkillName(skill_id) => {
+                        let _ = std::mem::replace(&mut player.skills[skill_id].name, buffer);
+                        selected_field = selected_field.next();
+                    }
+                    PlayerField::SkillCD(skill_id) => {
+                        match buffer.parse::<u32>() {
+                            Ok(num) => {
+                                player.skills[skill_id].cooldown = num;
+                            }
+                            Err(_) => todo!(),
+                        }
+                        selected_field = selected_field.next();
+                    }
+                }
+            }
+            None => return,
+            _ => unreachable!(),
         }
     }
 }

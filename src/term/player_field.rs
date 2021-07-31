@@ -1,7 +1,7 @@
 use crate::StatType;
 use std::fmt;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum PlayerField {
     Name,
     Stat(StatType),

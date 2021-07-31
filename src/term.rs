@@ -1,10 +1,10 @@
 pub mod action_enums;
-mod player_field;
 mod list_state_next;
+pub mod player_field;
 
-use crate::term::action_enums::{MainMenuAction, GameAction, CharacterMenuAction};
-use crate::term::player_field::PlayerField;
+use crate::term::action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use crate::term::list_state_next::ListStateNext;
+use crate::term::player_field::PlayerField;
 use crate::{Player, Players, Skill, Skills, StatType, Status, StatusCooldownType, StatusType};
 use crossterm::event::{read as read_event, Event, KeyCode};
 use std::cell::RefCell;
@@ -20,9 +20,13 @@ use tui::{
 
 #[derive(Copy, Clone)]
 pub enum CharacterMenuMode {
-    View { selected: Option<usize> },
-    Add,
-    Edit { to_edit: usize },
+    View {
+        selected: Option<usize>,
+    },
+    Edit {
+        selected: usize,
+        selected_field: PlayerField,
+    },
 }
 
 enum StatusBarType {
@@ -137,7 +141,9 @@ impl Term {
         is_vertical: bool,
     ) -> Option<usize> {
         self.term.borrow_mut().clear().unwrap();
-        if options.is_empty() { panic!("Can't show a dialog with no buttons") }
+        if options.is_empty() {
+            panic!("Can't show a dialog with no buttons")
+        }
         let width = {
             let desc_width = desc.len() as u16 + 4;
             let button_width = {
@@ -359,7 +365,8 @@ impl Term {
                             .iter()
                             .map(|item| ListItem::new(*item))
                             .collect::<Vec<ListItem>>(),
-                    ).highlight_style(Style::default().bg(Color::White).fg(Color::Black));
+                    )
+                    .highlight_style(Style::default().bg(Color::White).fg(Color::Black));
 
                     let (win_rect, statusbar_rect) = self.get_window_size(frame.size());
                     let menu_location = Term::get_centered_box(
@@ -408,7 +415,7 @@ impl Term {
                                 1 => MainMenuAction::Edit,
                                 2 => MainMenuAction::Quit,
                                 _ => unreachable!(),
-                            }
+                            };
                         }
                     }
                     _ => (),
@@ -423,7 +430,7 @@ impl Term {
             self.term
                 .borrow_mut()
                 .draw(|frame| {
-                    let player_stats = Term::player_stats_table(player, None);
+                    let player_stats = Term::player_stats_table(player, None, None);
                     let delimiter = Span::raw(" | ");
                     let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
                     let statusbar_text = Spans::from(vec![
@@ -499,106 +506,112 @@ impl Term {
         }
     }
 
-    fn player_stats_table(player: &Player, selected: Option<PlayerField>) -> impl Widget + '_ {
+    fn player_stats_table<'a>(
+        player: &'a Player,
+        selected: Option<PlayerField>,
+        selected_str: Option<&'a str>,
+    ) -> impl Widget + 'a {
         let selected_style = Style::default().bg(Color::White).fg(Color::Black);
-        let mut rows = vec![
-            Row::new(["Name", player.name.as_str()]).style(
-                if let Some(PlayerField::Name) = selected {
-                    selected_style.clone()
-                } else {
-                    Style::default()
-                },
-            ),
-            Row::new(["Stats"]),
-            // TODO: mb use a slice instead
-            Row::new::<Vec<Cell>>(vec![
-                "Strength".into(),
-                player.stats.strength.to_string().into(),
-            ])
-            .style(
-                if let Some(PlayerField::Stat(StatType::Strength)) = selected {
-                    selected_style.clone()
-                } else {
-                    Style::default()
-                },
-            ),
-            Row::new::<Vec<Cell>>(vec![
-                "Dexterity".into(),
-                player.stats.dexterity.to_string().into(),
-            ])
-            .style(
-                if let Some(PlayerField::Stat(StatType::Dexterity)) = selected {
-                    selected_style.clone()
-                } else {
-                    Style::default()
-                },
-            ),
-            Row::new::<Vec<Cell>>(vec!["Poise".into(), player.stats.poise.to_string().into()])
-                .style(if let Some(PlayerField::Stat(StatType::Poise)) = selected {
-                    selected_style.clone()
-                } else {
-                    Style::default()
-                }),
-            Row::new::<Vec<Cell>>(vec![
-                "Wisdom".into(),
-                player.stats.wisdom.to_string().into(),
-            ])
-            .style(
-                if let Some(PlayerField::Stat(StatType::Wisdom)) = selected {
-                    selected_style.clone()
-                } else {
-                    Style::default()
-                },
-            ),
-            Row::new::<Vec<Cell>>(vec![
-                "Intelligence".into(),
-                player.stats.intelligence.to_string().into(),
-            ])
-            .style(
-                if let Some(PlayerField::Stat(StatType::Intelligence)) = selected {
-                    selected_style.clone()
-                } else {
-                    Style::default()
-                },
-            ),
-            Row::new::<Vec<Cell>>(vec![
-                "Charisma".into(),
-                player.stats.charisma.to_string().into(),
-            ])
-            .style(
-                if let Some(PlayerField::Stat(StatType::Charisma)) = selected {
-                    selected_style.clone()
-                } else {
-                    Style::default()
-                },
-            ),
-            Row::new(["Skills"]),
-        ];
+        let mut rows = Vec::new();
+
+        rows.push(if let Some(PlayerField::Name) = selected {
+            let name = match selected_str {
+                Some(string) => string,
+                None => player.name.as_str(),
+            };
+            Row::new(["Name", name]).style(selected_style.clone())
+        } else {
+            Row::new(["Name", player.name.as_str()])
+        });
+
+        rows.push(Row::new(["Stats"]));
+
+        for field_type in [
+            PlayerField::Stat(StatType::Strength),
+            PlayerField::Stat(StatType::Dexterity),
+            PlayerField::Stat(StatType::Poise),
+            PlayerField::Stat(StatType::Wisdom),
+            PlayerField::Stat(StatType::Intelligence),
+            PlayerField::Stat(StatType::Charisma),
+        ] {
+            // TODO: avoid to_string()'ing everything
+            // TODO: make this actually readable and easy to understand
+            let (style, stat) = match (selected, selected_str) {
+                (Some(selected), Some(string)) => {
+                    if selected == field_type {
+                        (selected_style.clone(), string.to_string())
+                    } else {
+                        (
+                            Style::default(),
+                            match field_type {
+                                PlayerField::Stat(StatType::Strength) => player.stats.strength,
+                                PlayerField::Stat(StatType::Dexterity) => player.stats.dexterity,
+                                PlayerField::Stat(StatType::Poise) => player.stats.poise,
+                                PlayerField::Stat(StatType::Wisdom) => player.stats.wisdom,
+                                PlayerField::Stat(StatType::Intelligence) => {
+                                    player.stats.intelligence
+                                }
+                                PlayerField::Stat(StatType::Charisma) => player.stats.charisma,
+                                _ => unreachable!(),
+                            }
+                            .to_string(),
+                        )
+                    }
+                }
+                (_, _) => (Style::default(), player.stats.strength.to_string()),
+            };
+            rows.push(
+                Row::new::<[Cell; 2]>([field_type.to_string().into(), stat.into()]).style(style),
+            );
+        }
+
+        rows.push(Row::new(["Skills"]));
 
         for (i, skill) in player.skills.iter().enumerate() {
-            rows.push(
-                Row::new::<Vec<Cell>>(vec![
-                    "Name".into(),
-                    skill.name.as_str().into(),
-                    "CD".into(),
-                    skill.cooldown.to_string().into(),
-                    "Available after".into(),
-                    skill.available_after.to_string().into(),
-                ])
-                .style(
-                    if let Some(PlayerField::SkillName(current_skill_num))
-                    | Some(PlayerField::SkillCD(current_skill_num)) = selected
-                    {
-                        if current_skill_num == i {
-                            selected_style.clone()
-                        } else {
-                            Style::default()
-                        }
+            // TODO: dedup!!!
+            let mut name_style = None;
+            let name: Span;
+            if let Some(PlayerField::SkillName(curr_skill_num)) = selected {
+                if curr_skill_num == i {
+                    name = if let Some(selected_str) = selected_str {
+                        selected_str.into()
                     } else {
-                        Style::default()
-                    },
-                ),
-            );
+                        skill.name.as_str().into()
+                    };
+                    name_style = Some(selected_style.clone());
+                } else {
+                    name = skill.name.as_str().into();
+                }
+            } else {
+                name = skill.name.as_str().into();
+            }
+
+            let cd_string = skill.cooldown.to_string();
+            let mut cd_style = None;
+            let cd: Span;
+            if let Some(PlayerField::SkillCD(curr_skill_num)) = selected {
+                if curr_skill_num == i {
+                    cd = if let Some(selected_str) = selected_str {
+                        selected_str.into()
+                    } else {
+                        cd_string.into()
+                    };
+                    cd_style = Some(selected_style.clone());
+                } else {
+                    cd = cd_string.into();
+                }
+            } else {
+                cd = cd_string.into();
+            };
+
+            rows.push(Row::new::<[Cell; 6]>([
+                Span::styled("Name: ", name_style.unwrap_or_default()).into(),
+                name.into(),
+                Span::styled("CD: ", cd_style.unwrap_or_default()).into(),
+                cd.into(),
+                "Available after".into(),
+                skill.available_after.to_string().into(),
+            ]));
         }
 
         /*
@@ -615,9 +628,9 @@ impl Term {
 
         Table::new(rows).widths(
             [
-                Constraint::Length(10),
+                Constraint::Length(25),
                 Constraint::Percentage(25),
-                Constraint::Length(10),
+                Constraint::Length(25),
                 Constraint::Percentage(25),
             ]
             .as_ref(),
@@ -733,28 +746,38 @@ impl Term {
         };
     }
 
-    // TODO: separate most logic out of the UI and into the backend
-    // don't mix frontend and backend stupid
     pub fn draw_character_menu(
-        &mut self,
+        &self,
         mode: CharacterMenuMode,
-        players: &mut Players,
+        players: &Players,
     ) -> Option<CharacterMenuAction> {
-        let mut add_mode_current_field: Option<PlayerField> = None;
-        let mut add_mode_buffer: Option<String> = None;
-
-        if let CharacterMenuMode::Add | CharacterMenuMode::Edit { to_edit: _ } = mode {
-            // add an empty entry we are going to modify next
-            if let CharacterMenuMode::Add = mode {
-                players.push(Player::default());
+        fn validate_input(input: &str, field: PlayerField) -> bool {
+            match field {
+                PlayerField::Stat(_) | PlayerField::SkillCD(_) if !input.is_empty() => input.parse::<i64>().is_ok(),
+                _ => true,
             }
-
-            add_mode_current_field = Some(PlayerField::Name);
         }
 
-        let mut errors: Vec<String> = Vec::new();
+        let mut add_mode_buffer: Option<String> = if let CharacterMenuMode::Edit { selected, selected_field } = mode {
+            let player = &players[selected];
+            Some(match selected_field {
+                PlayerField::Name => player.name.clone(),
+                PlayerField::Stat(StatType::Strength) => player.stats.strength.to_string(),
+                PlayerField::Stat(StatType::Dexterity) => player.stats.dexterity.to_string(),
+                PlayerField::Stat(StatType::Poise) => player.stats.poise.to_string(),
+                PlayerField::Stat(StatType::Wisdom) => player.stats.wisdom.to_string(),
+                PlayerField::Stat(StatType::Intelligence) => player.stats.intelligence.to_string(),
+                PlayerField::Stat(StatType::Charisma) => player.stats.charisma.to_string(),
+                PlayerField::SkillName(i) => player.skills[i].name.clone(),
+                PlayerField::SkillCD(i) => player.skills[i].cooldown.to_string(),
+            })
+        } else {
+            None
+        };
+
         let mut player_list_state = ListState::default();
-        
+        let mut errors: Vec<String> = Vec::new();
+
         // default currently selected entry for each mode
         player_list_state.select(match mode {
             CharacterMenuMode::View { selected } => {
@@ -764,100 +787,18 @@ impl Term {
                 } else if !players.is_empty() {
                     Some(0)
                 } else {
-                // and don't select any if it is
+                    // and don't select any if it is
                     None
                 }
             }
-            CharacterMenuMode::Add => {
-                // always select the last/currenty in process of adding entry
-                Some(players.len() - 1)
-            }
-            CharacterMenuMode::Edit { to_edit: i } => Some(i),
+            CharacterMenuMode::Edit { selected, .. } => Some(selected),
         });
 
         loop {
-            // stupid workaround to match both Add and Edit(i) at once
-            if let (CharacterMenuMode::Add, i) | (CharacterMenuMode::Edit { to_edit: i }, _) = (mode, 0) {
-                let current_player = if let CharacterMenuMode::Add = mode {
-                    players.last_mut().unwrap()
-                } else {
-                    players.get_mut(i).unwrap()
-                };
-
-                match add_mode_current_field {
-                    Some(field) => {
-                        match field {
-                            PlayerField::Name => {
-                                // TODO: don't copy twice stupid
-                                if let None = add_mode_buffer {
-                                    add_mode_buffer = Some(current_player.name.clone());
-                                }
-                                current_player.name = add_mode_buffer.as_ref().unwrap().clone()
-                            }
-                            PlayerField::Stat(stat) => {
-                                let current_stat = match stat {
-                                    StatType::Strength => &mut current_player.stats.strength,
-                                    StatType::Dexterity => &mut current_player.stats.dexterity,
-                                    StatType::Poise => &mut current_player.stats.poise,
-                                    StatType::Wisdom => &mut current_player.stats.wisdom,
-                                    StatType::Intelligence => {
-                                        &mut current_player.stats.intelligence
-                                    }
-                                    StatType::Charisma => &mut current_player.stats.charisma,
-                                };
-                                if let None = add_mode_buffer {
-                                    add_mode_buffer = Some(current_stat.to_string());
-                                }
-                                match add_mode_buffer.as_ref().unwrap().parse::<i64>() {
-                                    Ok(num) => *current_stat = num,
-                                    Err(_) => errors.push(String::from(format!(
-                                        "Not a valid number(s): {}",
-                                        add_mode_buffer.as_ref().unwrap()
-                                    ))),
-                                }
-                            }
-                            // TODO: make that look nicer
-                            // currently a new skill just appears out of nowhere when you start typing
-                            PlayerField::SkillName(i) => {
-                                if let None = current_player.skills.get(i) {
-                                    current_player.skills.push(Skill::default());
-                                }
-                                let skill = &mut current_player.skills[i];
-
-                                if let None = add_mode_buffer {
-                                    add_mode_buffer = Some(skill.name.clone());
-                                }
-
-                                skill.name = add_mode_buffer.as_ref().unwrap().clone();
-                            }
-                            PlayerField::SkillCD(i) => {
-                                if let None = current_player.skills.get(i) {
-                                    current_player.skills.push(Skill::default());
-                                }
-                                let skill = &mut current_player.skills[i];
-
-                                if let None = add_mode_buffer {
-                                    add_mode_buffer = Some(skill.cooldown.to_string());
-                                }
-                                match add_mode_buffer.as_ref().unwrap().parse::<u32>() {
-                                    Ok(num) => skill.cooldown = num,
-                                    Err(_) => errors.push(String::from(format!(
-                                        "Not a valid number(s): {}",
-                                        add_mode_buffer.as_ref().unwrap()
-                                    ))),
-                                }
-                            }
-                        }
-                    }
-                    None => return None,
-                }
-            }
-
             let mut player_list_items = Vec::new();
             for player in players.iter() {
                 player_list_items.push(ListItem::new(player.name.clone()));
             }
-
 
             self.term
                 .borrow_mut()
@@ -895,10 +836,7 @@ impl Term {
                                     "uit".into(),
                                 ])
                             }
-                            CharacterMenuMode::Add => {
-                                Spans::from("Add mode. Press Enter, Up, or down arrows to navigate | ESC to quit")
-                            }
-                            CharacterMenuMode::Edit { to_edit: _ } => {
+                            CharacterMenuMode::Edit {..} => {
                                 Spans::from("Edit mode. Press Up or down arrows to navigate | Enter or ESC to quit")
                             }
                         };
@@ -916,7 +854,8 @@ impl Term {
                     frame.render_stateful_widget(player_list, tables[0], &mut player_list_state);
 
                     if let Some(num) = player_list_state.selected() {
-                        frame.render_widget(Term::player_stats_table(&players[num], add_mode_current_field), tables[1]);
+                        let selected_field = if let CharacterMenuMode::Edit{ selected_field, .. } = mode { Some(selected_field) } else { None };
+                        frame.render_widget(Term::player_stats_table(&players[num], selected_field, add_mode_buffer.as_deref()), tables[1]);
                     }
                 })
                 .unwrap();
@@ -947,67 +886,51 @@ impl Term {
                         }
                         _ => (),
                     },
-                    CharacterMenuMode::Add | CharacterMenuMode::Edit { to_edit: _ } => match key.code {
+                    CharacterMenuMode::Edit { selected_field, .. } => match key.code {
                         KeyCode::Char(ch) => {
-                            if let None = add_mode_buffer {
-                                add_mode_buffer = Some(String::new());
+                            let buffer = add_mode_buffer.as_mut().unwrap();
+                            buffer.push(ch);
+                            // TODO: dedup??
+                            if !validate_input(&buffer, selected_field) {
+                                errors.push(format!("Not a valid number: {}", buffer.as_str()));
                             }
-                            add_mode_buffer.as_mut().unwrap().push(ch);
                         }
                         KeyCode::Up => {
-                            *add_mode_current_field.as_mut().unwrap() =
-                                add_mode_current_field.as_ref().unwrap().prev();
-                            add_mode_buffer = None;
+                            todo!();
                         }
                         KeyCode::Down => {
                             // TODO: merge logic with ::Enter. Currently there are no checks if the
                             // input is valid
-                            *add_mode_current_field.as_mut().unwrap() =
-                                add_mode_current_field.as_ref().unwrap().next();
-                            add_mode_buffer = None;
+                            todo!();
                         }
                         KeyCode::Backspace => {
-                            add_mode_buffer.as_mut().unwrap().pop();
+                            let buffer = add_mode_buffer.as_mut().unwrap();
+                            buffer.pop();
+                            if !validate_input(&buffer, selected_field) {
+                                errors.push(format!("Not a valid number: {}", buffer.as_str()));
+                            }
                         }
                         KeyCode::Enter => {
-                            if let CharacterMenuMode::Add = mode {
-                                // TODO: don't calculate the next if we're going to skip
-                                let mut next =
-                                    Some(add_mode_current_field.as_ref().unwrap().next());
-
-                                // if pressed Enter with an empty buffer when adding skills - the last item -> done
-                                if let Some(PlayerField::SkillName(current_skill_num)) =
-                                    add_mode_current_field
+                            let buffer = add_mode_buffer.as_ref().unwrap();
+                            if !buffer.is_empty() {
+                                if let PlayerField::Stat(_) | PlayerField::SkillCD(_) =
+                                    selected_field
                                 {
-                                    if add_mode_buffer.as_ref().unwrap().is_empty() {
-                                        // TODO: somehow avoid nest matching mode twice
-                                        let current_player_num = match mode {
-                                            CharacterMenuMode::Add => players.len() - 1,
-                                            CharacterMenuMode::Edit { to_edit: num } => num,
-                                            _ => unreachable!(),
-                                        };
-                                        players[current_player_num]
-                                            .skills
-                                            .remove(current_skill_num);
-                                        next = None;
-                                    }
-                                } else if let Some(_) = add_mode_current_field
-                                {
-                                    if add_mode_buffer.as_ref().unwrap().is_empty() {
+                                    if !validate_input(&buffer, selected_field) {
+                                        errors.push(format!(
+                                            "Not a valid number: {}",
+                                            buffer.as_str()
+                                        ));
                                         continue;
                                     }
                                 }
 
-                                add_mode_current_field = next;
-                                add_mode_buffer = None;
-                            } else if let CharacterMenuMode::Edit { to_edit: _ } = mode {
-                                return None;
+                                return Some(CharacterMenuAction::Editing {
+                                    buffer: add_mode_buffer.unwrap(),
+                                });
                             }
                         }
                         KeyCode::Esc => {
-                            if let CharacterMenuMode::Add = mode {
-                                players.pop();
-                            }
                             return None;
                         }
                         _ => (),
