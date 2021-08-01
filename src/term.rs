@@ -51,11 +51,11 @@ impl Term {
     fn get_window_size(&self, window: Rect) -> (Rect, Rect) {
         let layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(10), Constraint::Length(1)].as_ref())
+            .constraints([ Constraint::Length(1), Constraint::Min(10)].as_ref())
             .split(window);
 
         // TODO: try moving these around
-        (layout[0], layout[1])
+        (layout[1], layout[0])
     }
 
     fn stylize_statusbar<'a, T: Into<Text<'a>>>(text: T, sbtype: StatusBarType) -> Paragraph<'a> {
@@ -380,7 +380,7 @@ impl Term {
                     frame.render_stateful_widget(list, menu_location, &mut list_state);
                     frame.render_widget(
                         Term::stylize_statusbar(
-                            format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION")),
+                            format!(" dnd-gm-helper v{}", env!("CARGO_PKG_VERSION")),
                             StatusBarType::Normal,
                         ),
                         statusbar_rect,
@@ -443,7 +443,7 @@ impl Term {
                     let delimiter = Span::raw(" | ");
                     let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
                     let statusbar_text = Spans::from(vec![
-                        "Use ".into(),
+                        " Use ".into(),
                         Span::styled("s", style_underlined),
                         "kill".into(),
                         delimiter.clone(),
@@ -887,7 +887,7 @@ impl Term {
                                 ])
                             }
                             CharacterMenuMode::Edit {..} => {
-                                Spans::from("Edit mode. Press Up or down arrows to navigate | Enter or ESC to quit")
+                                Spans::from(" Edit mode. Press ESC to quit")
                             }
                         };
                         frame.render_widget(
