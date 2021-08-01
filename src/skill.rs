@@ -1,7 +1,5 @@
 use serde::{Serialize, Deserialize};
 
-pub type Skills = Vec<Skill>;
-
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub struct Skill {
     pub name: String,

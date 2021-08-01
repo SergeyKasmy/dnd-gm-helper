@@ -11,12 +11,12 @@ use term::{
     player_field::PlayerField,
     CharacterMenuMode, Term,
 };
-use player::{Player,Players};
-use skill::{Skill, Skills};
-use status::{Status, Statuses, StatusCooldownType, StatusType};
+use player::Player;
+use skill::Skill;
+use status::{Status, StatusCooldownType};
 use stat::{Stats, StatType};
 
-fn game_start(term: &mut Term, players: &mut Players) {
+fn game_start(term: &mut Term, players: &mut Vec<Player>) {
     enum NextPlayerState {
         Default,
         Pending,
@@ -88,7 +88,7 @@ fn drain_status(player: &mut Player, status_type: StatusCooldownType) {
     player.statuses.retain(|status| status.duration > 0);
 }
 
-fn choose_skill_and_use(term: &mut Term, skills: &mut Skills) {
+fn choose_skill_and_use(term: &mut Term, skills: &mut Vec<Skill>) {
     loop {
         let input = match term.choose_skill(&skills) {
             Some(num) => num as usize,
@@ -117,7 +117,7 @@ fn make_move(player: &mut Player) {
     drain_status(player, StatusCooldownType::Normal);
 }
 
-fn add_status(term: &Term, statuses: &mut Statuses) {
+fn add_status(term: &Term, statuses: &mut Vec<Status>) {
     if let Some(status) = term.choose_status() {
         statuses.push(status);
     }
@@ -129,7 +129,7 @@ fn manage_money(term: &Term, player: &mut Player) {
 
 pub fn run() {
     let mut term = Term::new();
-    let mut players: Players = vec![];
+    let mut players = vec![];
     let file_contents = std::fs::read_to_string("players.json");
     match file_contents {
         Ok(json) => {
@@ -167,7 +167,7 @@ pub fn run() {
     std::fs::write("players.json", serde_json::to_string(&players).unwrap()).unwrap();
 }
 
-fn character_menu(term: &Term, players: &mut Players) {
+fn character_menu(term: &Term, players: &mut Vec<Player>) {
     let mut last_selected = None;
     loop {
         match term
@@ -204,7 +204,7 @@ fn character_menu(term: &Term, players: &mut Players) {
     }
 }
 
-fn edit_player(term: &Term, players: &mut Players, id: usize) {
+fn edit_player(term: &Term, players: &mut Vec<Player>, id: usize) {
     let mut selected_field = PlayerField::Name; // TODO: maybe use something like new()?
     loop {
         //

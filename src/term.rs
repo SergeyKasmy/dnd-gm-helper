@@ -5,7 +5,10 @@ pub mod player_field;
 use crate::term::action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use crate::term::list_state_next::ListStateNext;
 use crate::term::player_field::PlayerField;
-use crate::{Player, Players, Skills, StatType, Status, StatusCooldownType, StatusType};
+use crate::player::Player;
+use crate::status::{Status, StatusType, StatusCooldownType};
+use crate::stat::StatType;
+use crate::skill::Skill;
 use crossterm::event::{read as read_event, Event, KeyCode};
 use std::cell::RefCell;
 use std::io::{stdout, Stdout};
@@ -707,7 +710,7 @@ impl Term {
         stats
     }
 
-    pub fn choose_skill(&self, skills: &Skills) -> Option<u32> {
+    pub fn choose_skill(&self, skills: &[Skill]) -> Option<u32> {
         self.messagebox_with_options(
             "Select skill",
             skills
@@ -801,7 +804,7 @@ impl Term {
         }
     }
 
-    pub fn pick_player<'a>(&self, players: &'a Players) -> Option<&'a Player> {
+    pub fn pick_player<'a>(&self, players: &'a [Player]) -> Option<&'a Player> {
         return match self.messagebox_with_options(
             "Pick a player",
             players
@@ -811,7 +814,7 @@ impl Term {
                 .as_slice(),
             true,
         ) {
-            Some(num) => Some(players.get(num).unwrap()),
+            Some(num) => Some(&players[num]),
             None => None,
         };
     }
@@ -819,7 +822,7 @@ impl Term {
     pub fn draw_character_menu(
         &self,
         mode: CharacterMenuMode,
-        players: &Players,
+        players: &[Player],
     ) -> Option<CharacterMenuAction> {
         fn validate_input(input: &str, field: PlayerField) -> bool {
             match field {

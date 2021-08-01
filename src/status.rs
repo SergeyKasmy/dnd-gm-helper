@@ -1,7 +1,5 @@
 use serde::{Serialize, Deserialize};
 
-pub type Statuses = Vec<Status>;
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Status {
     pub status_type: StatusType,
