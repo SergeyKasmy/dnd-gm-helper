@@ -51,7 +51,7 @@ impl Term {
     fn get_window_size(&self, window: Rect) -> (Rect, Rect) {
         let layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([ Constraint::Length(1), Constraint::Min(10)].as_ref())
+            .constraints([Constraint::Length(1), Constraint::Min(10)].as_ref())
             .split(window);
 
         // TODO: try moving these around
@@ -506,6 +506,7 @@ impl Term {
                         'q' => return GameAction::Quit,
                         _ => (),
                     },
+                    KeyCode::End => return GameAction::Quit,
                     _ => (),
                 },
                 _ => (),
@@ -628,7 +629,11 @@ impl Term {
 
             rows_skills.push(Row::new::<[Cell; 2]>([
                 Span::styled(name, name_style.unwrap_or_default()).into(),
-                Span::styled(format!("CD: {} of {}", skill.available_after.to_string(), cd), cd_style.unwrap_or_default()).into(),
+                Span::styled(
+                    format!("CD: {} of {}", skill.available_after.to_string(), cd),
+                    cd_style.unwrap_or_default(),
+                )
+                .into(),
             ]));
         }
 
@@ -660,16 +665,13 @@ impl Term {
         let table_outer =
             Table::new(rows_outer).widths([Constraint::Length(10), Constraint::Min(10)].as_ref());
 
-        let table_stats =
-            Table::new(rows_stats).widths([Constraint::Length(15), Constraint::Min(5)].as_ref()).block(Block::default().borders(Borders::ALL).title("Stats"));
+        let table_stats = Table::new(rows_stats)
+            .widths([Constraint::Length(15), Constraint::Min(5)].as_ref())
+            .block(Block::default().borders(Borders::ALL).title("Stats"));
 
-        let table_skills = Table::new(rows_skills).widths(
-            [
-                Constraint::Length(30),
-                Constraint::Length(30),
-            ]
-            .as_ref(),
-        ).block(Block::default().borders(Borders::ALL).title("Skills"));
+        let table_skills = Table::new(rows_skills)
+            .widths([Constraint::Length(30), Constraint::Length(30)].as_ref())
+            .block(Block::default().borders(Borders::ALL).title("Skills"));
 
         let [rect_outer, rect_stats, rect_skills, _] = <[Rect; 4]>::try_from(layout).ok().unwrap();
 
@@ -869,23 +871,21 @@ impl Term {
 
                     if errors.is_empty() {
                         let statusbar_text = match mode {
-                            CharacterMenuMode::View { selected: _ } => {
-                                Spans::from(vec![
-                                    " ".into(),
-                                    Span::styled("A", style_underlined),
-                                    "dd".into(),
-                                    delimiter.clone(),
-                                    Span::styled("E", style_underlined),
-                                    "dit".into(),
-                                    delimiter.clone(),
-                                    Span::styled("D", style_underlined),
-                                    "elete".into(),
-                                    delimiter.clone(),
-                                    Span::styled("Q", style_underlined),
-                                    "uit".into(),
-                                ])
-                            }
-                            CharacterMenuMode::Edit {..} => {
+                            CharacterMenuMode::View { selected: _ } => Spans::from(vec![
+                                " ".into(),
+                                Span::styled("A", style_underlined),
+                                "dd".into(),
+                                delimiter.clone(),
+                                Span::styled("E", style_underlined),
+                                "dit".into(),
+                                delimiter.clone(),
+                                Span::styled("D", style_underlined),
+                                "elete".into(),
+                                delimiter.clone(),
+                                Span::styled("Q", style_underlined),
+                                "uit".into(),
+                            ]),
+                            CharacterMenuMode::Edit { .. } => {
                                 Spans::from(" Edit mode. Press ESC to quit")
                             }
                         };
@@ -903,9 +903,19 @@ impl Term {
                     frame.render_stateful_widget(player_list, tables[0], &mut player_list_state);
 
                     if let Some(num) = player_list_state.selected() {
-                        let selected_field = if let CharacterMenuMode::Edit{ selected_field, .. } = mode { Some(selected_field) } else { None };
-                        let mut player_stats = Term::player_stats(&players[num], tables[1], selected_field, add_mode_buffer.as_deref());
-                        while let Some((table, table_rect)) =  player_stats.pop() {
+                        let selected_field =
+                            if let CharacterMenuMode::Edit { selected_field, .. } = mode {
+                                Some(selected_field)
+                            } else {
+                                None
+                            };
+                        let mut player_stats = Term::player_stats(
+                            &players[num],
+                            tables[1],
+                            selected_field,
+                            add_mode_buffer.as_deref(),
+                        );
+                        while let Some((table, table_rect)) = player_stats.pop() {
                             frame.render_widget(table, table_rect);
                         }
                     }
@@ -936,6 +946,7 @@ impl Term {
                         KeyCode::Up => {
                             player_list_state.prev(player_list_items.len());
                         }
+                        KeyCode::End => return Some(CharacterMenuAction::Quit),
                         _ => (),
                     },
                     CharacterMenuMode::Edit { selected_field, .. } => {
