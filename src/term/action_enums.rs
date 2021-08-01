@@ -9,6 +9,8 @@ pub enum GameAction {
     AddStatus,
     DrainStatusAttacking,
     DrainStatusAttacked,
+
+    #[allow(dead_code)]
     ManageMoney,
     ClearStatuses,
     ResetSkillsCD,

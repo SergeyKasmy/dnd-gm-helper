@@ -5,7 +5,7 @@ pub mod player_field;
 use crate::term::action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use crate::term::list_state_next::ListStateNext;
 use crate::term::player_field::PlayerField;
-use crate::{Player, Players, Skill, Skills, StatType, Status, StatusCooldownType, StatusType};
+use crate::{Player, Players, Skills, StatType, Status, StatusCooldownType, StatusType};
 use crossterm::event::{read as read_event, Event, KeyCode};
 use std::cell::RefCell;
 use std::io::{stdout, Stdout};
@@ -14,7 +14,7 @@ use tui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans, Text},
-    widgets::{Block, Borders, Cell, List, ListItem, ListState, Paragraph, Row, Table, Widget},
+    widgets::{Block, Borders, Cell, List, ListItem, ListState, Paragraph, Row, Table},
     Terminal,
 };
 

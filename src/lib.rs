@@ -1,95 +1,20 @@
 // TODO: add logging
 // TODO: add force crash with vars and bt
 mod term;
+mod player;
+mod skill;
+mod status;
+mod stat;
 
-use serde::{Deserialize, Serialize};
 use term::{
     action_enums::{CharacterMenuAction, GameAction, MainMenuAction},
     player_field::PlayerField,
     CharacterMenuMode, Term,
 };
-
-type Players = Vec<Player>;
-type Skills = Vec<Skill>;
-type Statuses = Vec<Status>;
-
-#[derive(Serialize, Deserialize, Default, Debug)]
-pub struct Player {
-    name: String,
-    stats: Stats,
-    skills: Vec<Skill>,
-    statuses: Vec<Status>,
-    money: i64,
-}
-
-#[derive(Copy, Clone, PartialEq, Debug)]
-pub enum StatType {
-    Strength,
-    Dexterity,
-    Poise,
-    Wisdom,
-    Intelligence,
-    Charisma,
-}
-
-// TODO: reimplement using HashMap with StatType as keys
-#[derive(Serialize, Deserialize, Default, Debug)]
-struct Stats {
-    strength: i64,
-    dexterity: i64,
-    poise: i64,
-    wisdom: i64,
-    intelligence: i64,
-    charisma: i64,
-}
-
-#[derive(Serialize, Deserialize, Default, Debug)]
-pub struct Skill {
-    name: String,
-    cooldown: u32,
-    available_after: u32,
-}
-
-impl Skill {
-    #[allow(dead_code)]
-    fn new(name: String, cooldown: u32) -> Skill {
-        Skill {
-            name,
-            cooldown,
-            available_after: 0,
-        }
-    }
-}
-
-// TODO: use HashMap
-#[derive(Serialize, Deserialize, Debug)]
-enum StatusType {
-    Discharge,
-    FireAttack,
-    FireShield,
-    IceShield,
-    Blizzard,
-    Fusion,
-    Luck,
-
-    Knockdown,
-    Poison,
-    Stun,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Status {
-    status_type: StatusType,
-    status_cooldown_type: StatusCooldownType,
-    duration: u32,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
-enum StatusCooldownType {
-    Normal,
-    Attacking,
-    Attacked,
-}
+use player::{Player,Players};
+use skill::{Skill, Skills};
+use status::{Status, Statuses, StatusCooldownType, StatusType};
+use stat::{Stats, StatType};
 
 fn game_start(term: &mut Term, players: &mut Players) {
     enum NextPlayerState {
