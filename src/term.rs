@@ -476,8 +476,8 @@ impl Term {
                         Span::styled("p", style_underlined),
                         " turn".into(),
                         delimiter.clone(),
-                        Span::styled("P", style_underlined),
-                        "ick next pl.".into(),
+                        "Pick next pl.: ".into(),
+                        Span::styled("o", style_underlined),
                         delimiter.clone(),
                         Span::styled("Q", style_underlined),
                         "uit".into(),
@@ -637,6 +637,17 @@ impl Term {
             ]));
         }
 
+        let mut rows_statuses = Vec::new();
+
+        for status in player.statuses.iter() {
+            // TODO: implement Display
+            let name = format!("{:?}", status.status_type);
+            rows_statuses.push(Row::new::<[Cell; 2]>([
+                                        name.into(),
+                                        format!("{} turns left ({:?})", status.duration, status.status_cooldown_type).into(),
+            ]));
+        }
+
         /*
         rows.push(
             Row::new::<Vec<Cell>>(vec!["Money".into(), player.money.to_string().into()]).style(
@@ -649,13 +660,16 @@ impl Term {
         );
         */
 
+        let rows_statuses_len = rows_statuses.len();
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints(
                 [
+                // TODO: replace as with try_into()
                     Constraint::Length(rows_outer.len() as u16),
                     Constraint::Length(rows_stats.len() as u16 + 2), // + borders
                     Constraint::Length(rows_skills.len() as u16 + 2),
+                    Constraint::Length(if rows_statuses_len > 0 { rows_statuses_len as u16 + 2 } else { 0 }),
                     Constraint::Min(1),
                 ]
                 .as_ref(),
@@ -673,13 +687,23 @@ impl Term {
             .widths([Constraint::Length(30), Constraint::Length(30)].as_ref())
             .block(Block::default().borders(Borders::ALL).title("Skills"));
 
-        let [rect_outer, rect_stats, rect_skills, _] = <[Rect; 4]>::try_from(layout).ok().unwrap();
+        let table_statuses = Table::new(rows_statuses)
+            .widths([Constraint::Length(30), Constraint::Length(30)].as_ref())
+            .block(Block::default().borders(Borders::ALL).title("Statuses"));
 
-        vec![
+        let [rect_outer, rect_stats, rect_skills, rect_statuses, _] = <[Rect; 5]>::try_from(layout).ok().unwrap();
+
+        let mut stats = vec![
             (table_outer, rect_outer),
             (table_stats, rect_stats),
             (table_skills, rect_skills),
-        ]
+        ];
+
+        if rows_statuses_len > 0 {
+            stats.push((table_statuses, rect_statuses));
+        }
+
+        stats
     }
 
     pub fn choose_skill(&self, skills: &Skills) -> Option<u32> {

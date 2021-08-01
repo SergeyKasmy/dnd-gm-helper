@@ -1,3 +1,5 @@
+// TODO: add logging
+// TODO: add force crash with vars and bt
 mod term;
 
 use serde::{Deserialize, Serialize};
@@ -59,6 +61,7 @@ impl Skill {
     }
 }
 
+// TODO: use HashMap
 #[derive(Serialize, Deserialize, Debug)]
 enum StatusType {
     Discharge,
@@ -110,6 +113,9 @@ fn game_start(term: &mut Term, players: &mut Players) {
             }
             loop {
                 match term.draw_game(&player) {
+                    // TODO: reorder players + sorting
+                    // TODO: combine lesser used options into a menu
+                    // TODO: use skills on others -> adds status
                     GameAction::UseSkill => choose_skill_and_use(term, &mut player.skills),
                     GameAction::AddStatus => add_status(term, &mut player.statuses),
                     GameAction::DrainStatusAttacking => {
@@ -258,6 +264,7 @@ fn character_menu(term: &Term, players: &mut Players) {
                 edit_player(term, players, num);
                 last_selected = Some(num);
             }
+            // TODO: remove skills
             CharacterMenuAction::Delete(num) => {
                 if term.messagebox_yn("Are you sure?") {
                     players.remove(num);
