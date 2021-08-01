@@ -450,13 +450,8 @@ impl Term {
                         Span::styled("A", style_underlined),
                         "dd status".into(),
                         delimiter.clone(),
-                        "Drain status (a".into(),
-                        Span::styled("f", style_underlined),
-                        "ter attacking".into(),
-                        ", ".into(),
-                        "after ".into(),
-                        Span::styled("g", style_underlined),
-                        "etting attacked)".into(),
+                        Span::styled("D", style_underlined),
+                        "rain status".into(),
                         delimiter.clone(),
                         Span::styled("C", style_underlined),
                         "lear statuses".into(),
@@ -495,11 +490,17 @@ impl Term {
                     KeyCode::Char(ch) => match ch {
                         's' => return GameAction::UseSkill,
                         'a' => return GameAction::AddStatus,
-                        'b' => return GameAction::DrainStatusAttacking,
-                        'n' => return GameAction::DrainStatusAttacked,
+                        'd' => {
+                            match self.messagebox_with_options("Which statuses to drain?", &["After attacking", "After getting attacked"], true) {
+                                Some(0) => return GameAction::DrainStatusAttacking,
+                                Some(1) => return GameAction::DrainStatusAttacked,
+                                _ => (),
+                            }
+                        }
                         'c' => return GameAction::ClearStatuses,
                         'v' => return GameAction::ResetSkillsCD,
-                        'm' => return GameAction::ManageMoney,
+                        //'m' => return GameAction::ManageMoney,
+                        'm' => self.messagebox("Turned off for now."),
                         ' ' => return GameAction::MakeTurn,
                         'p' => return GameAction::SkipTurn,
                         'o' => return GameAction::NextPlayerPick,
