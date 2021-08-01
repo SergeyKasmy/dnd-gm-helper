@@ -2,13 +2,13 @@ pub mod action_enums;
 mod list_state_next;
 pub mod player_field;
 
+use crate::player::Player;
+use crate::skill::Skill;
+use crate::stat::StatType;
+use crate::status::{Status, StatusCooldownType, StatusType};
 use crate::term::action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use crate::term::list_state_next::ListStateNext;
 use crate::term::player_field::PlayerField;
-use crate::player::Player;
-use crate::status::{Status, StatusType, StatusCooldownType};
-use crate::stat::StatType;
-use crate::skill::Skill;
 use crossterm::event::{read as read_event, Event, KeyCode};
 use std::cell::RefCell;
 use std::io::{stdout, Stdout};
@@ -249,7 +249,7 @@ impl Term {
                     } else {
                         for (i, option) in options.iter().enumerate() {
                             let rect = {
-                                let mut tmp = buttons_rect.clone();
+                                let mut tmp = buttons_rect;
                                 tmp.y += i as u16;
                                 tmp.width = option.chars().count() as u16;
                                 tmp
@@ -268,8 +268,8 @@ impl Term {
                 })
                 .unwrap();
 
-            match read_event().unwrap() {
-                Event::Key(key) => match key.code {
+            if let Event::Key(key) = read_event().unwrap() {
+                match key.code {
                     KeyCode::Enter => return Some(state.selected().unwrap_or(0)),
                     KeyCode::Char(ch) => {
                         if let Some(num) = ch.to_digit(10) {
@@ -293,8 +293,7 @@ impl Term {
                         state.prev(options.len());
                     }
                     _ => (),
-                },
-                _ => (),
+                }
             }
         }
     }
@@ -322,8 +321,8 @@ impl Term {
                 })
                 .unwrap();
 
-            match read_event().unwrap() {
-                Event::Key(key) => match key.code {
+            if let Event::Key(key) = read_event().unwrap() {
+                match key.code {
                     KeyCode::Char(ch) => buffer.push(ch),
                     KeyCode::Backspace => {
                         buffer.pop();
@@ -332,17 +331,16 @@ impl Term {
                         return buffer;
                     }
                     _ => (),
-                },
-                _ => (),
+                }
             }
         }
     }
 
     pub fn messagebox_yn(&self, desc: &str) -> bool {
-        match self.messagebox_with_options(desc, &["Yes", "No"], false) {
-            Some(0) => true,
-            _ => false,
-        }
+        matches!(
+            self.messagebox_with_options(desc, &["Yes", "No"], false),
+            Some(0)
+        )
     }
 
     pub fn messagebox(&self, desc: &str) {
@@ -391,8 +389,8 @@ impl Term {
                 })
                 .unwrap();
 
-            match read_event().unwrap() {
-                Event::Key(key) => match key.code {
+            if let Event::Key(key) = read_event().unwrap() {
+                match key.code {
                     KeyCode::Esc => {
                         if self.messagebox_yn("Are you sure you want to quit?") {
                             return MainMenuAction::Quit;
@@ -425,13 +423,12 @@ impl Term {
                         }
                     }
                     _ => (),
-                },
-                _ => (),
+                }
             }
         }
     }
 
-    pub fn draw_game(&mut self, player: &Player) -> GameAction {
+    pub fn draw_game(&self, player: &Player) -> GameAction {
         loop {
             self.term
                 .borrow_mut()
@@ -488,13 +485,17 @@ impl Term {
                 })
                 .unwrap();
 
-            match read_event().unwrap() {
-                Event::Key(key) => match key.code {
+            if let Event::Key(key) = read_event().unwrap() {
+                match key.code {
                     KeyCode::Char(ch) => match ch {
                         's' => return GameAction::UseSkill,
                         'a' => return GameAction::AddStatus,
                         'd' => {
-                            match self.messagebox_with_options("Which statuses to drain?", &["After attacking", "After getting attacked"], true) {
+                            match self.messagebox_with_options(
+                                "Which statuses to drain?",
+                                &["After attacking", "After getting attacked"],
+                                true,
+                            ) {
                                 Some(0) => return GameAction::DrainStatusAttacking,
                                 Some(1) => return GameAction::DrainStatusAttacked,
                                 _ => (),
@@ -512,8 +513,7 @@ impl Term {
                     },
                     KeyCode::End => return GameAction::Quit,
                     _ => (),
-                },
-                _ => (),
+                }
             }
         }
     }
@@ -532,7 +532,7 @@ impl Term {
                 Some(string) => string,
                 None => player.name.as_str(),
             };
-            Row::new(["Name", name]).style(selected_style.clone())
+            Row::new(["Name", name]).style(selected_style)
         } else {
             Row::new(["Name", player.name.as_str()])
         });
@@ -553,7 +553,7 @@ impl Term {
             let (style, stat) = match (selected, selected_str) {
                 (Some(selected), Some(string)) => {
                     if selected == field_type {
-                        (selected_style.clone(), string.to_string())
+                        (selected_style, string.to_string())
                     } else {
                         (
                             Style::default(),
@@ -605,7 +605,7 @@ impl Term {
                     } else {
                         skill.name.as_str().into()
                     };
-                    name_style = Some(selected_style.clone());
+                    name_style = Some(selected_style);
                 } else {
                     name = skill.name.as_str().into();
                 }
@@ -621,14 +621,14 @@ impl Term {
                     cd = if let Some(selected_str) = selected_str {
                         selected_str.into()
                     } else {
-                        cd_string.into()
+                        cd_string
                     };
-                    cd_style = Some(selected_style.clone());
+                    cd_style = Some(selected_style);
                 } else {
-                    cd = cd_string.into();
+                    cd = cd_string;
                 }
             } else {
-                cd = cd_string.into();
+                cd = cd_string;
             };
 
             rows_skills.push(Row::new::<[Cell; 2]>([
@@ -647,8 +647,12 @@ impl Term {
             // TODO: implement Display
             let name = format!("{:?}", status.status_type);
             rows_statuses.push(Row::new::<[Cell; 2]>([
-                                        name.into(),
-                                        format!("{} turns left ({:?})", status.duration, status.status_cooldown_type).into(),
+                name.into(),
+                format!(
+                    "{} turns left ({:?})",
+                    status.duration, status.status_cooldown_type
+                )
+                .into(),
             ]));
         }
 
@@ -669,11 +673,15 @@ impl Term {
             .direction(Direction::Vertical)
             .constraints(
                 [
-                // TODO: replace as with try_into()
+                    // TODO: replace as with try_into()
                     Constraint::Length(rows_outer.len() as u16),
                     Constraint::Length(rows_stats.len() as u16 + 2), // + borders
                     Constraint::Length(rows_skills.len() as u16 + 2),
-                    Constraint::Length(if rows_statuses_len > 0 { rows_statuses_len as u16 + 2 } else { 0 }),
+                    Constraint::Length(if rows_statuses_len > 0 {
+                        rows_statuses_len as u16 + 2
+                    } else {
+                        0
+                    }),
                     Constraint::Min(1),
                 ]
                 .as_ref(),
@@ -695,7 +703,8 @@ impl Term {
             .widths([Constraint::Length(30), Constraint::Length(30)].as_ref())
             .block(Block::default().borders(Borders::ALL).title("Statuses"));
 
-        let [rect_outer, rect_stats, rect_skills, rect_statuses, _] = <[Rect; 5]>::try_from(layout).ok().unwrap();
+        let [rect_outer, rect_stats, rect_skills, rect_statuses, _] =
+            <[Rect; 5]>::try_from(layout).ok().unwrap();
 
         let mut stats = vec![
             (table_outer, rect_outer),

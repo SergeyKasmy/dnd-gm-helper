@@ -16,7 +16,7 @@ use skill::Skill;
 use status::{Status, StatusCooldownType};
 use stat::{Stats, StatType};
 
-fn game_start(term: &mut Term, players: &mut Vec<Player>) {
+fn game_start(term: &Term, players: &mut Vec<Player>) {
     enum NextPlayerState {
         Default,
         Pending,
@@ -25,7 +25,7 @@ fn game_start(term: &mut Term, players: &mut Vec<Player>) {
     let mut next_player = NextPlayerState::Default;
     'game: loop {
         if let NextPlayerState::Pending = next_player {
-            if let Some(picked_player) = term.pick_player(&players) {
+            if let Some(picked_player) = term.pick_player(players) {
                 next_player = NextPlayerState::Picked(picked_player);
             }
         }
@@ -37,7 +37,7 @@ fn game_start(term: &mut Term, players: &mut Vec<Player>) {
                 }
             }
             loop {
-                match term.draw_game(&player) {
+                match term.draw_game(player) {
                     // TODO: reorder players + sorting
                     // TODO: combine lesser used options into a menu
                     // TODO: use skills on others -> adds status
@@ -88,9 +88,9 @@ fn drain_status(player: &mut Player, status_type: StatusCooldownType) {
     player.statuses.retain(|status| status.duration > 0);
 }
 
-fn choose_skill_and_use(term: &mut Term, skills: &mut Vec<Skill>) {
+fn choose_skill_and_use(term: &Term, skills: &mut Vec<Skill>) {
     loop {
-        let input = match term.choose_skill(&skills) {
+        let input = match term.choose_skill(skills) {
             Some(num) => num as usize,
             None => return,
         };
@@ -124,15 +124,14 @@ fn add_status(term: &Term, statuses: &mut Vec<Status>) {
 }
 
 fn manage_money(term: &Term, player: &mut Player) {
-    player.money = player.money + term.get_money_amount();
+    player.money += term.get_money_amount();
 }
 
 pub fn run() {
-    let mut term = Term::new();
+    let term = Term::new();
     let mut players = vec![];
     let file_contents = std::fs::read_to_string("players.json");
-    match file_contents {
-        Ok(json) => {
+    if let Ok(json) = file_contents {
             match serde_json::from_str(&json) {
                 Ok(data) => players = data,
                 Err(_) => match term.messagebox_yn("The database is corrupted. Continue?") {
@@ -152,14 +151,12 @@ pub fn run() {
                     false => return,
                 },
             };
-        }
-        Err(_) => (),
     }
 
     loop {
         match term.draw_main_menu() {
-            MainMenuAction::Play => game_start(&mut term, &mut players),
-            MainMenuAction::Edit => character_menu(&mut term, &mut players),
+            MainMenuAction::Play => game_start(&term, &mut players),
+            MainMenuAction::Edit => character_menu(&term, &mut players),
             MainMenuAction::Quit => break,
         }
     }
@@ -212,7 +209,7 @@ fn edit_player(term: &Term, players: &mut Vec<Player>, id: usize) {
         match selected_field {
             PlayerField::SkillName(skill_id) | PlayerField::SkillCD(skill_id) => {
                 let player = players.get_mut(id).unwrap();
-                if let None = player.skills.get(skill_id) {
+                if player.skills.get(skill_id).is_none() {
                     player.skills.push(Skill::default())
                 }
             }
@@ -252,16 +249,13 @@ fn edit_player(term: &Term, players: &mut Vec<Player>, id: usize) {
                             StatType::Charisma => &mut player.stats.charisma,
                         };
 
-                        match buffer.parse::<i64>() {
-                            Ok(result) => {
-                                *current_stat = result;
+                        if let Ok(buffer) = buffer.parse::<i64>() {
+                                *current_stat = buffer;
                                 selected_field = match field_offset.unwrap_or(1) {
                                     1 => selected_field.next(),
                                     -1 => selected_field.prev(),
                                     _ => selected_field,
                                 }
-                            }
-                            Err(_) => (),
                         }
                     }
                     PlayerField::SkillName(skill_id) => {
@@ -273,11 +267,8 @@ fn edit_player(term: &Term, players: &mut Vec<Player>, id: usize) {
                         }
                     }
                     PlayerField::SkillCD(skill_id) => {
-                        match buffer.parse::<u32>() {
-                            Ok(num) => {
-                                player.skills[skill_id].cooldown = num;
-                            }
-                            Err(_) => (),
+                        if let Ok(buffer) = buffer.parse::<u32>() {
+                                player.skills[skill_id].cooldown = buffer;
                         }
                         selected_field = match field_offset.unwrap_or(1) {
                             1 => selected_field.next(),
