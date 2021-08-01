@@ -21,7 +21,11 @@ pub enum GameAction {
 pub enum CharacterMenuAction {
     Add,
     Edit(usize),
-    Editing { buffer: String, field_offset: Option<i8>},
+    Editing {
+        buffer: String,
+        field_offset: Option<i8>,
+    },
+    DoneEditing,
     Delete(usize),
     Quit,
 }

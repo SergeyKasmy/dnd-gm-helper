@@ -1005,7 +1005,7 @@ impl Term {
                                 }
                             }
                             KeyCode::Esc => {
-                                return None;
+                                return Some(CharacterMenuAction::DoneEditing);
                             }
                             _ => (),
                         }

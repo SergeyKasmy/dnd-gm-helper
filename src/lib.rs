@@ -264,7 +264,10 @@ fn character_menu(term: &Term, players: &mut Players) {
                     last_selected = num.checked_sub(1);
                 }
             }
-            CharacterMenuAction::Quit | CharacterMenuAction::Editing { .. } => break,
+            CharacterMenuAction::Quit { .. } => break,
+            CharacterMenuAction::Editing { .. } | CharacterMenuAction::DoneEditing => {
+                unreachable!()
+            }
         }
     }
 }
@@ -330,7 +333,6 @@ fn edit_player(term: &Term, players: &mut Players, id: usize) {
                         }
                     }
                     PlayerField::SkillName(skill_id) => {
-                        // TODO: pop a skill if the buffer is empty
                         let _ = std::mem::replace(&mut player.skills[skill_id].name, buffer);
                         selected_field = match field_offset.unwrap_or(1) {
                             1 => selected_field.next(),
@@ -353,7 +355,17 @@ fn edit_player(term: &Term, players: &mut Players, id: usize) {
                     }
                 }
             }
-            None => return,
+            // TODO: properly check for empty buffer in player and skill names
+            Some(CharacterMenuAction::DoneEditing) => {
+                if let Some(player) = players.get_mut(id) {
+                    if let Some(skill) = player.skills.last() {
+                        if skill.name.is_empty() {
+                            player.skills.pop();
+                        }
+                    }
+                }
+                return;
+            }
             _ => unreachable!(),
         }
     }
