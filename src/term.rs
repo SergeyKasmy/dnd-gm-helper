@@ -18,6 +18,8 @@ use tui::{
     Terminal,
 };
 
+use std::convert::TryFrom;
+
 #[derive(Copy, Clone)]
 pub enum CharacterMenuMode {
     View {
@@ -52,12 +54,13 @@ impl Term {
             .constraints([Constraint::Min(10), Constraint::Length(1)].as_ref())
             .split(window);
 
+        // TODO: try moving these around
         (layout[0], layout[1])
     }
 
     fn stylize_statusbar<'a, T: Into<Text<'a>>>(text: T, sbtype: StatusBarType) -> Paragraph<'a> {
         let style = match sbtype {
-            StatusBarType::Normal => Style::default().bg(Color::Cyan).fg(Color::Black),
+            StatusBarType::Normal => Style::default().bg(Color::Gray).fg(Color::Black),
             StatusBarType::Error => Style::default().bg(Color::Red).fg(Color::White),
         };
         Paragraph::new(text.into()).style(style)
@@ -431,7 +434,12 @@ impl Term {
                 .borrow_mut()
                 .draw(|frame| {
                     let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
-                    let (player_stats, player_stats_rect) = Term::player_stats(player, window_rect, None, None).pop().unwrap();
+
+                    let mut player_stats = Term::player_stats(player, window_rect, None, None);
+                    while let Some((table, table_rect)) = player_stats.pop() {
+                        frame.render_widget(table, table_rect);
+                    }
+
                     let delimiter = Span::raw(" | ");
                     let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
                     let statusbar_text = Spans::from(vec![
@@ -475,7 +483,6 @@ impl Term {
                         "uit".into(),
                     ]);
 
-                    frame.render_widget(player_stats, window_rect);
                     frame.render_widget(
                         Term::stylize_statusbar(statusbar_text, StatusBarType::Normal),
                         statusbar_rect,
@@ -513,9 +520,9 @@ impl Term {
         selected_str: Option<&'a str>,
     ) -> Vec<(Table<'a>, Rect)> {
         let selected_style = Style::default().bg(Color::White).fg(Color::Black);
-        let mut rows = Vec::new();
+        let mut rows_outer = Vec::new();
 
-        rows.push(if let Some(PlayerField::Name) = selected {
+        rows_outer.push(if let Some(PlayerField::Name) = selected {
             let name = match selected_str {
                 Some(string) => string,
                 None => player.name.as_str(),
@@ -525,8 +532,9 @@ impl Term {
             Row::new(["Name", player.name.as_str()])
         });
 
-        rows.push(Row::new(["Stats"]));
+        //rows.push(Row::new(["Stats"]));
 
+        let mut rows_stats = Vec::new();
         for field_type in [
             PlayerField::Stat(StatType::Strength),
             PlayerField::Stat(StatType::Dexterity),
@@ -573,12 +581,13 @@ impl Term {
                     .to_string(),
                 ),
             };
-            rows.push(
+            rows_stats.push(
                 Row::new::<[Cell; 2]>([field_type.to_string().into(), stat.into()]).style(style),
             );
         }
 
-        rows.push(Row::new(["Skills"]));
+        //rows.push(Row::new(["Skills"]));
+        let mut rows_skills = Vec::new();
 
         for (i, skill) in player.skills.iter().enumerate() {
             // TODO: dedup!!!
@@ -601,7 +610,7 @@ impl Term {
 
             let cd_string = skill.cooldown.to_string();
             let mut cd_style = None;
-            let cd: Span;
+            let cd: String;
             if let Some(PlayerField::SkillCD(curr_skill_num)) = selected {
                 if curr_skill_num == i {
                     cd = if let Some(selected_str) = selected_str {
@@ -617,13 +626,10 @@ impl Term {
                 cd = cd_string.into();
             };
 
-            rows.push(Row::new::<[Cell; 6]>([
-                Span::styled("Name: ", name_style.unwrap_or_default()).into(),
+            rows_skills.push(Row::new::<[Cell; 2]>([
+                //Span::styled("Name: ", name_style.unwrap_or_default()).into(),
                 name.into(),
-                Span::styled("CD: ", cd_style.unwrap_or_default()).into(),
-                cd.into(),
-                "Available after".into(),
-                skill.available_after.to_string().into(),
+                Span::styled(format!("CD: {} of {}", skill.available_after.to_string(), cd), cd_style.unwrap_or_default()).into(),
             ]));
         }
 
@@ -639,17 +645,40 @@ impl Term {
         );
         */
 
-        let table = Table::new(rows).widths(
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(
+                [
+                    Constraint::Length(rows_outer.len() as u16),
+                    Constraint::Length(rows_stats.len() as u16 + 2), // + borders
+                    Constraint::Length(rows_skills.len() as u16 + 2),
+                    Constraint::Min(1),
+                ]
+                .as_ref(),
+            )
+            .split(rect);
+
+        let table_outer =
+            Table::new(rows_outer).widths([Constraint::Length(10), Constraint::Min(10)].as_ref());
+
+        let table_stats =
+            Table::new(rows_stats).widths([Constraint::Length(15), Constraint::Min(5)].as_ref()).block(Block::default().borders(Borders::ALL).title("Stats"));
+
+        let table_skills = Table::new(rows_skills).widths(
             [
-                Constraint::Length(25),
-                Constraint::Percentage(25),
-                Constraint::Length(25),
-                Constraint::Percentage(25),
+                Constraint::Length(30),
+                Constraint::Length(30),
             ]
             .as_ref(),
-        );
+        ).block(Block::default().borders(Borders::ALL).title("Skills"));
 
-        vec![(table, rect)]
+        let [rect_outer, rect_stats, rect_skills, _] = <[Rect; 4]>::try_from(layout).ok().unwrap();
+
+        vec![
+            (table_outer, rect_outer),
+            (table_stats, rect_stats),
+            (table_skills, rect_skills),
+        ]
     }
 
     pub fn choose_skill(&self, skills: &Skills) -> Option<u32> {
@@ -876,8 +905,10 @@ impl Term {
 
                     if let Some(num) = player_list_state.selected() {
                         let selected_field = if let CharacterMenuMode::Edit{ selected_field, .. } = mode { Some(selected_field) } else { None };
-                        let (table, table_rect) = Term::player_stats(&players[num], tables[1], selected_field, add_mode_buffer.as_deref()).pop().unwrap();
-                        frame.render_widget(table, table_rect);
+                        let mut player_stats = Term::player_stats(&players[num], tables[1], selected_field, add_mode_buffer.as_deref());
+                        while let Some((table, table_rect)) =  player_stats.pop() {
+                            frame.render_widget(table, table_rect);
+                        }
                     }
                 })
                 .unwrap();
@@ -911,13 +942,19 @@ impl Term {
                     CharacterMenuMode::Edit { selected_field, .. } => {
                         macro_rules! validate {
                             () => {
-                                if !validate_input(add_mode_buffer.as_ref().unwrap(), selected_field) {
-                                    errors.push(format!("Not a valid number: {}", add_mode_buffer.as_ref().unwrap()));
+                                if !validate_input(
+                                    add_mode_buffer.as_ref().unwrap(),
+                                    selected_field,
+                                ) {
+                                    errors.push(format!(
+                                        "Not a valid number: {}",
+                                        add_mode_buffer.as_ref().unwrap()
+                                    ));
                                     false
                                 } else {
                                     true
                                 }
-                            }
+                            };
                         }
 
                         match key.code {
