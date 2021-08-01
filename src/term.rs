@@ -430,7 +430,8 @@ impl Term {
             self.term
                 .borrow_mut()
                 .draw(|frame| {
-                    let player_stats = Term::player_stats_table(player, None, None);
+                    let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
+                    let (player_stats, player_stats_rect) = Term::player_stats(player, window_rect, None, None).pop().unwrap();
                     let delimiter = Span::raw(" | ");
                     let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
                     let statusbar_text = Spans::from(vec![
@@ -473,7 +474,6 @@ impl Term {
                         Span::styled("Q", style_underlined),
                         "uit".into(),
                     ]);
-                    let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
 
                     frame.render_widget(player_stats, window_rect);
                     frame.render_widget(
@@ -506,11 +506,12 @@ impl Term {
         }
     }
 
-    fn player_stats_table<'a>(
+    fn player_stats<'a>(
         player: &'a Player,
+        rect: Rect,
         selected: Option<PlayerField>,
         selected_str: Option<&'a str>,
-    ) -> impl Widget + 'a {
+    ) -> Vec<(Table<'a>, Rect)> {
         let selected_style = Style::default().bg(Color::White).fg(Color::Black);
         let mut rows = Vec::new();
 
@@ -559,20 +560,18 @@ impl Term {
                     }
                 }
                 (_, _) => (
-                            Style::default(),
-                            match field_type {
-                                PlayerField::Stat(StatType::Strength) => player.stats.strength,
-                                PlayerField::Stat(StatType::Dexterity) => player.stats.dexterity,
-                                PlayerField::Stat(StatType::Poise) => player.stats.poise,
-                                PlayerField::Stat(StatType::Wisdom) => player.stats.wisdom,
-                                PlayerField::Stat(StatType::Intelligence) => {
-                                    player.stats.intelligence
-                                }
-                                PlayerField::Stat(StatType::Charisma) => player.stats.charisma,
-                                _ => unreachable!(),
-                            }
-                            .to_string(),
-                        ),
+                    Style::default(),
+                    match field_type {
+                        PlayerField::Stat(StatType::Strength) => player.stats.strength,
+                        PlayerField::Stat(StatType::Dexterity) => player.stats.dexterity,
+                        PlayerField::Stat(StatType::Poise) => player.stats.poise,
+                        PlayerField::Stat(StatType::Wisdom) => player.stats.wisdom,
+                        PlayerField::Stat(StatType::Intelligence) => player.stats.intelligence,
+                        PlayerField::Stat(StatType::Charisma) => player.stats.charisma,
+                        _ => unreachable!(),
+                    }
+                    .to_string(),
+                ),
             };
             rows.push(
                 Row::new::<[Cell; 2]>([field_type.to_string().into(), stat.into()]).style(style),
@@ -640,7 +639,7 @@ impl Term {
         );
         */
 
-        Table::new(rows).widths(
+        let table = Table::new(rows).widths(
             [
                 Constraint::Length(25),
                 Constraint::Percentage(25),
@@ -648,7 +647,9 @@ impl Term {
                 Constraint::Percentage(25),
             ]
             .as_ref(),
-        )
+        );
+
+        vec![(table, rect)]
     }
 
     pub fn choose_skill(&self, skills: &Skills) -> Option<u32> {
@@ -767,12 +768,18 @@ impl Term {
     ) -> Option<CharacterMenuAction> {
         fn validate_input(input: &str, field: PlayerField) -> bool {
             match field {
-                PlayerField::Stat(_) | PlayerField::SkillCD(_) if !input.is_empty() => input.parse::<i64>().is_ok(),
+                PlayerField::Stat(_) | PlayerField::SkillCD(_) if !input.is_empty() => {
+                    input.parse::<i64>().is_ok()
+                }
                 _ => true,
             }
         }
 
-        let mut add_mode_buffer: Option<String> = if let CharacterMenuMode::Edit { selected, selected_field } = mode {
+        let mut add_mode_buffer: Option<String> = if let CharacterMenuMode::Edit {
+            selected,
+            selected_field,
+        } = mode
+        {
             let player = &players[selected];
             Some(match selected_field {
                 PlayerField::Name => player.name.clone(),
@@ -869,7 +876,8 @@ impl Term {
 
                     if let Some(num) = player_list_state.selected() {
                         let selected_field = if let CharacterMenuMode::Edit{ selected_field, .. } = mode { Some(selected_field) } else { None };
-                        frame.render_widget(Term::player_stats_table(&players[num], selected_field, add_mode_buffer.as_deref()), tables[1]);
+                        let (table, table_rect) = Term::player_stats(&players[num], tables[1], selected_field, add_mode_buffer.as_deref()).pop().unwrap();
+                        frame.render_widget(table, table_rect);
                     }
                 })
                 .unwrap();
@@ -900,60 +908,61 @@ impl Term {
                         }
                         _ => (),
                     },
-                    CharacterMenuMode::Edit { selected_field, .. } => match key.code {
-                        KeyCode::Char(ch) => {
-                            let buffer = add_mode_buffer.as_mut().unwrap();
-                            buffer.push(ch);
-                            // TODO: dedup??
-                            if !validate_input(&buffer, selected_field) {
-                                errors.push(format!("Not a valid number: {}", buffer.as_str()));
+                    CharacterMenuMode::Edit { selected_field, .. } => {
+                        macro_rules! validate {
+                            () => {
+                                if !validate_input(add_mode_buffer.as_ref().unwrap(), selected_field) {
+                                    errors.push(format!("Not a valid number: {}", add_mode_buffer.as_ref().unwrap()));
+                                    false
+                                } else {
+                                    true
+                                }
                             }
                         }
-                        KeyCode::Up => {
+
+                        match key.code {
+                            KeyCode::Char(ch) => {
+                                add_mode_buffer.as_mut().unwrap().push(ch);
+                                validate!();
+                            }
+                            KeyCode::Up => {
                                 return Some(CharacterMenuAction::Editing {
                                     buffer: add_mode_buffer.unwrap(),
                                     field_offset: Some(-1),
                                 });
-                        }
-                        KeyCode::Down => {
+                            }
+                            KeyCode::Down => {
                                 return Some(CharacterMenuAction::Editing {
                                     buffer: add_mode_buffer.unwrap(),
                                     field_offset: Some(1),
                                 });
-                        }
-                        KeyCode::Backspace => {
-                            let buffer = add_mode_buffer.as_mut().unwrap();
-                            buffer.pop();
-                            if !validate_input(&buffer, selected_field) {
-                                errors.push(format!("Not a valid number: {}", buffer.as_str()));
                             }
-                        }
-                        KeyCode::Enter => {
-                            let buffer = add_mode_buffer.as_ref().unwrap();
-                            if !buffer.is_empty() {
-                                if let PlayerField::Stat(_) | PlayerField::SkillCD(_) =
-                                    selected_field
-                                {
-                                    if !validate_input(&buffer, selected_field) {
-                                        errors.push(format!(
-                                            "Not a valid number: {}",
-                                            buffer.as_str()
-                                        ));
-                                        continue;
+                            KeyCode::Backspace => {
+                                add_mode_buffer.as_mut().unwrap().pop();
+                                validate!();
+                            }
+                            KeyCode::Enter => {
+                                if !add_mode_buffer.as_ref().unwrap().is_empty() {
+                                    if let PlayerField::Stat(_) | PlayerField::SkillCD(_) =
+                                        selected_field
+                                    {
+                                        if !validate!() {
+                                            continue;
+                                        }
                                     }
-                                }
 
-                                return Some(CharacterMenuAction::Editing {
-                                    buffer: add_mode_buffer.unwrap(),
-                                    field_offset: None,
-                                });
+                                    return Some(CharacterMenuAction::Editing {
+                                        buffer: add_mode_buffer.unwrap(),
+                                        field_offset: None,
+                                    });
+                                }
                             }
+                            KeyCode::Esc => {
+                                return None;
+                            }
+                            _ => (),
                         }
-                        KeyCode::Esc => {
-                            return None;
-                        }
-                        _ => (),
-                    },
+                    }
                 }
             }
         }
