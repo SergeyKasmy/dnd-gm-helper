@@ -592,7 +592,7 @@ impl Term {
         for (i, skill) in player.skills.iter().enumerate() {
             // TODO: dedup!!!
             let mut name_style = None;
-            let name: Span;
+            let name: String;
             if let Some(PlayerField::SkillName(curr_skill_num)) = selected {
                 if curr_skill_num == i {
                     name = if let Some(selected_str) = selected_str {
@@ -627,8 +627,7 @@ impl Term {
             };
 
             rows_skills.push(Row::new::<[Cell; 2]>([
-                //Span::styled("Name: ", name_style.unwrap_or_default()).into(),
-                name.into(),
+                Span::styled(name, name_style.unwrap_or_default()).into(),
                 Span::styled(format!("CD: {} of {}", skill.available_after.to_string(), cd), cd_style.unwrap_or_default()).into(),
             ]));
         }
