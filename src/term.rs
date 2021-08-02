@@ -2,8 +2,9 @@ pub mod action_enums;
 mod list_state_next;
 pub mod player_field;
 
-use crate::player::Player;
+use crate::player::{Player, Players};
 use crate::skill::Skill;
+use crate::sort_player_list;
 use crate::stat::StatType;
 use crate::status::{Status, StatusCooldownType, StatusType};
 use crate::term::action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
@@ -11,6 +12,7 @@ use crate::term::list_state_next::ListStateNext;
 use crate::term::player_field::PlayerField;
 use crossterm::event::{read as read_event, Event, KeyCode};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::{stdout, Stdout};
 use tui::{
     backend::CrosstermBackend,
@@ -49,6 +51,33 @@ impl Term {
         Term {
             term: RefCell::new(Terminal::new(CrosstermBackend::new(stdout())).unwrap()),
         }
+    }
+
+    fn get_id_from_sel(selected: usize, map: &HashMap<usize, usize>) -> usize {
+        let id = *map.get(&selected).unwrap();
+        log::debug!("Got id #{} of selected item #{}", id, selected);
+        id
+    }
+
+    fn get_sel_from_id(id: usize, map: &HashMap<usize, usize>) -> usize {
+        let selected = *map
+            .iter()
+            .find_map(|(key, &val)| if val == id { Some(key) } else { None })
+            .unwrap();
+        log::debug!("Got selected item #{} from id #{}", selected, id);
+        selected
+    }
+
+    fn get_pretty_player_list(
+        players: &Players,
+    ) -> (Vec<(&usize, &Player)>, HashMap<usize, usize>) {
+        let pretty_list = sort_player_list(players);
+        let mut id_map = HashMap::new();
+        for (i, (id, _)) in pretty_list.iter().enumerate() {
+            id_map.insert(i, **id);
+        }
+
+        (pretty_list, id_map)
     }
 
     fn get_window_size(&self, window: Rect) -> (Rect, Rect) {
@@ -435,7 +464,8 @@ impl Term {
                 .draw(|frame| {
                     let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
 
-                    let mut player_stats = Term::player_stats(player, window_rect, None, None);
+                    let mut player_stats =
+                        Term::player_stats(player, None, window_rect, None, None);
                     while let Some((table, table_rect)) = player_stats.pop() {
                         frame.render_widget(table, table_rect);
                     }
@@ -520,6 +550,7 @@ impl Term {
 
     fn player_stats<'a>(
         player: &'a Player,
+        player_id: Option<usize>,
         rect: Rect,
         selected: Option<PlayerField>,
         selected_str: Option<&'a str>,
@@ -527,14 +558,23 @@ impl Term {
         let selected_style = Style::default().bg(Color::White).fg(Color::Black);
         let mut rows_outer = Vec::new();
 
+        let id_str = player_id
+            .and_then(|id| Some(id.to_string()))
+            .unwrap_or("".to_string());
+        let id_str = if !id_str.is_empty() {
+            format!("ID: {}", id_str)
+        } else {
+            id_str
+        };
+
         rows_outer.push(if let Some(PlayerField::Name) = selected {
             let name = match selected_str {
                 Some(string) => string,
                 None => player.name.as_str(),
             };
-            Row::new(["Name", name]).style(selected_style)
+            Row::new::<[Cell; 3]>(["Name".into(), name.into(), id_str.into()]).style(selected_style)
         } else {
-            Row::new(["Name", player.name.as_str()])
+            Row::new::<[Cell; 3]>(["Name".into(), player.name.as_str().into(), id_str.into()])
         });
 
         //rows.push(Row::new(["Stats"]));
@@ -688,8 +728,14 @@ impl Term {
             )
             .split(rect);
 
-        let table_outer =
-            Table::new(rows_outer).widths([Constraint::Length(10), Constraint::Min(10)].as_ref());
+        let table_outer = Table::new(rows_outer).widths(
+            [
+                Constraint::Length(10),
+                Constraint::Length(20),
+                Constraint::Min(5),
+            ]
+            .as_ref(),
+        );
 
         let table_stats = Table::new(rows_stats)
             .widths([Constraint::Length(15), Constraint::Min(5)].as_ref())
@@ -813,17 +859,18 @@ impl Term {
         }
     }
 
-    pub fn pick_player<'a>(&self, players: &'a [Player]) -> Option<&'a Player> {
+    pub fn pick_player<'a>(&self, players: &'a mut Players) -> Option<&'a Player> {
+        let (player_list, id_map) = Term::get_pretty_player_list(players);
         return match self.messagebox_with_options(
             "Pick a player",
-            players
+            player_list
                 .iter()
-                .map(|x| x.name.as_str())
+                .map(|(_, x)| x.name.as_str())
                 .collect::<Vec<&str>>()
                 .as_slice(),
             true,
         ) {
-            Some(num) => Some(&players[num]),
+            Some(num) => Some(players.get(&Term::get_id_from_sel(num, &id_map)).unwrap()),
             None => None,
         };
     }
@@ -831,7 +878,7 @@ impl Term {
     pub fn draw_character_menu(
         &self,
         mode: CharacterMenuMode,
-        players: &[Player],
+        players: &mut Players,
     ) -> Option<CharacterMenuAction> {
         fn validate_input(input: &str, field: PlayerField) -> bool {
             match field {
@@ -847,7 +894,7 @@ impl Term {
             selected_field,
         } = mode
         {
-            let player = &players[selected];
+            let player = players.get(&selected).unwrap();
             Some(match selected_field {
                 PlayerField::Name => player.name.clone(),
                 PlayerField::Stat(StatType::Strength) => player.stats.strength.to_string(),
@@ -863,14 +910,22 @@ impl Term {
             None
         };
 
-        let mut player_list_state = ListState::default();
         let mut errors: Vec<String> = Vec::new();
 
-        // default currently selected entry for each mode
+        let mut player_list_state = ListState::default();
+        let mut player_list_items = Vec::new();
+        let (player_pretty_list, player_list_id_map) = Term::get_pretty_player_list(players);
+
+        for (_, player) in player_pretty_list {
+            log::debug!("Adding player to the player list: {:#?}", player);
+            player_list_items.push(ListItem::new(player.name.as_str()));
+        }
+        log::debug!("Player item list vec len is {}", player_list_items.len());
+        // selected item by default
         player_list_state.select(match mode {
             CharacterMenuMode::View { selected } => {
-                if let Some(num) = selected {
-                    Some(num)
+                if let Some(id) = selected {
+                    Some(Term::get_sel_from_id(id, &player_list_id_map))
                 // if none is selected, select the first one if the list isn't empty
                 } else if !players.is_empty() {
                     Some(0)
@@ -879,15 +934,16 @@ impl Term {
                     None
                 }
             }
-            CharacterMenuMode::Edit { selected, .. } => Some(selected),
+            CharacterMenuMode::Edit { selected, .. } => {
+                Some(Term::get_sel_from_id(selected, &player_list_id_map))
+            }
         });
+        log::debug!(
+            "Preselected player is at pos {:?}",
+            player_list_state.selected()
+        );
 
         loop {
-            let mut player_list_items = Vec::new();
-            for player in players.iter() {
-                player_list_items.push(ListItem::new(player.name.clone()));
-            }
-
             self.term
                 .borrow_mut()
                 .draw(|frame| {
@@ -940,14 +996,19 @@ impl Term {
                     frame.render_stateful_widget(player_list, tables[0], &mut player_list_state);
 
                     if let Some(num) = player_list_state.selected() {
+                        log::debug!("#{} is selected", num);
                         let selected_field =
                             if let CharacterMenuMode::Edit { selected_field, .. } = mode {
                                 Some(selected_field)
                             } else {
                                 None
                             };
+                        let id = Term::get_id_from_sel(num, &player_list_id_map);
+                        let selected_player = players.get(&id).unwrap();
+                        log::debug!("Got player #{}: {:#?}", id, selected_player);
                         let mut player_stats = Term::player_stats(
-                            &players[num],
+                            selected_player,
+                            Some(id),
                             tables[1],
                             selected_field,
                             add_mode_buffer.as_deref(),
@@ -966,12 +1027,17 @@ impl Term {
                             'a' => return Some(CharacterMenuAction::Add),
                             'e' => {
                                 if let Some(i) = player_list_state.selected() {
-                                    return Some(CharacterMenuAction::Edit(i));
+                                    return Some(CharacterMenuAction::Edit(Term::get_id_from_sel(
+                                        i,
+                                        &player_list_id_map,
+                                    )));
                                 }
                             }
                             'd' => {
                                 if let Some(i) = player_list_state.selected() {
-                                    return Some(CharacterMenuAction::Delete(i));
+                                    return Some(CharacterMenuAction::Delete(
+                                        Term::get_id_from_sel(i, &player_list_id_map),
+                                    ));
                                 }
                             }
                             'q' => return Some(CharacterMenuAction::Quit),
@@ -983,7 +1049,7 @@ impl Term {
                         KeyCode::Up => {
                             player_list_state.prev(player_list_items.len());
                         }
-                        KeyCode::End => return Some(CharacterMenuAction::Quit),
+                        KeyCode::Esc => return Some(CharacterMenuAction::Quit),
                         _ => (),
                     },
                     CharacterMenuMode::Edit { selected_field, .. } => {

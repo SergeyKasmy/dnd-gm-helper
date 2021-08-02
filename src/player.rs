@@ -1,5 +1,8 @@
-use crate::{Stats, Skill, Status};
-use serde::{Serialize, Deserialize};
+use crate::{Skill, Stats, Status};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+pub type Players = HashMap<usize, Player>;
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub struct Player {

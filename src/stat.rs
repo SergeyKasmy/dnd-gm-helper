@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 // TODO: reimplement using HashMap with StatType as keys
 #[derive(Serialize, Deserialize, Default, Debug)]
