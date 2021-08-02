@@ -16,4 +16,15 @@ impl Skill {
             available_after: 0,
         }
     }
+
+    pub fn r#use(&mut self) -> Result<(), ()> {
+        if self.available_after == 0 {
+            log::debug!("Using skill {}", self.name);
+            self.available_after = self.cooldown;
+            Ok(())
+        } else {
+            log::info!("Skill {} is still on cooldown", self.name);
+            Err(())
+        }
+    }
 }

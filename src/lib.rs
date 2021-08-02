@@ -48,13 +48,44 @@ fn game_start(term: &Term, players: &mut Players) {
                     // TODO: combine lesser used options into a menu
                     // TODO: use skills on others -> adds status
                     // TODO: rename "Drain status" to "Got hit"/"Hit mob"
-                    GameAction::UseSkill => choose_skill_and_use(term, &mut player.skills),
-                    GameAction::AddStatus => add_status(term, &mut player.statuses),
+                    GameAction::UseSkill => {
+                        // TODO: rework
+                        let skills = &mut player.skills;
+                        log::debug!("Choosing a skill to use");
+                        loop {
+                            let input = match term.choose_skill(skills) {
+                                Some(num) => num as usize,
+                                None => return,
+                            };
+                            log::debug!("Chose skill #{}", input);
+                            match skills.get_mut(input) {
+                                Some(skill) => {
+                                    if let Err(_) = skill.r#use() {
+                                        term.messagebox("Skill still on cooldown");
+                                    }
+                                    break;
+                                }
+                                None => term.messagebox("Number out of bounds"),
+                            }
+                        }
+                    }
+                    GameAction::AddStatus => {
+                        if let Some(status) = term.choose_status() {
+                            log::debug!(
+                                "Adding status {:?} for {}, type: {:?}",
+                                status.status_type,
+                                status.duration,
+                                status.status_cooldown_type
+                            );
+
+                            player.add_status(status);
+                        }
+                    }
                     GameAction::DrainStatusAttacking => {
-                        drain_status(player, StatusCooldownType::Attacking)
+                        player.drain_status(StatusCooldownType::Attacking)
                     }
                     GameAction::DrainStatusAttacked => {
-                        drain_status(player, StatusCooldownType::Attacked)
+                        player.drain_status(StatusCooldownType::Attacked)
                     }
                     GameAction::ClearStatuses => player.statuses.clear(),
                     GameAction::ResetSkillsCD => {
@@ -64,9 +95,9 @@ fn game_start(term: &Term, players: &mut Players) {
                             .iter_mut()
                             .for_each(|skill| skill.available_after = 0);
                     }
-                    GameAction::ManageMoney => manage_money(term, player),
+                    GameAction::ManageMoney => player.manage_money(term),
                     GameAction::MakeTurn => {
-                        turn(player);
+                        player.turn();
                         break;
                     }
                     GameAction::SkipTurn => break,
@@ -81,79 +112,6 @@ fn game_start(term: &Term, players: &mut Players) {
     }
 
     log::debug!("Exiting the game...");
-}
-
-fn use_skill(skill: &mut Skill) {
-    log::debug!("Using skill {}", skill.name);
-    skill.available_after = skill.cooldown;
-}
-
-fn drain_status(player: &mut Player, status_type: StatusCooldownType) {
-    log::debug!(
-        "Draining statuses for {} with type {:?}",
-        player.name,
-        status_type
-    );
-    // decrease all statuses duration with the status cooldown type provided
-    player.statuses.iter_mut().for_each(|status| {
-        if status.status_cooldown_type == status_type && status.duration > 0 {
-            log::debug!("Drained {:?}", status.status_type);
-            status.duration -= 1
-        }
-    });
-    // remove all statuses that have run out = retain all statuses that haven't yet run out
-    player.statuses.retain(|status| status.duration > 0);
-}
-
-fn choose_skill_and_use(term: &Term, skills: &mut Vec<Skill>) {
-    log::debug!("Choosing a skill to use");
-    loop {
-        let input = match term.choose_skill(skills) {
-            Some(num) => num as usize,
-            None => return,
-        };
-        log::debug!("Chose skill #{}", input);
-        match skills.get_mut(input) {
-            Some(skill) => {
-                if skill.available_after == 0 {
-                    use_skill(skill);
-                } else {
-                    log::debug!("Skill {} is still on cooldown", skill.name);
-                    term.messagebox("Skill still on cooldown");
-                }
-                break;
-            }
-            None => term.messagebox("Number out of bounds"),
-        }
-    }
-}
-
-fn turn(player: &mut Player) {
-    log::debug!("{}'s turn has ended", player.name);
-    player.skills.iter_mut().for_each(|skill| {
-        if skill.available_after > 0 {
-            skill.available_after -= 1
-        }
-    });
-    drain_status(player, StatusCooldownType::Normal);
-}
-
-fn add_status(term: &Term, statuses: &mut Vec<Status>) {
-    if let Some(status) = term.choose_status() {
-        log::debug!(
-            "Adding status {:?} for {}, type: {:?}",
-            status.status_type,
-            status.duration,
-            status.status_cooldown_type
-        );
-        statuses.push(status);
-    }
-}
-
-fn manage_money(term: &Term, player: &mut Player) {
-    let diff = term.get_money_amount();
-    log::debug!("Adding {} money to Player {}", diff, player.name);
-    player.money += diff;
 }
 
 pub fn run() {
