@@ -5,11 +5,11 @@ pub mod player_field;
 use crate::player::{Player, Players};
 use crate::skill::Skill;
 use crate::sort_player_list;
-use crate::stat::StatType;
 use crate::status::{Status, StatusCooldownType, StatusType};
 use crate::term::action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use crate::term::list_state_next::ListStateNext;
 use crate::term::player_field::PlayerField;
+use crate::STAT_LIST;
 use crossterm::event::{read as read_event, Event, KeyCode};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -559,8 +559,8 @@ impl Term {
         let mut rows_outer = Vec::new();
 
         let id_str = player_id
-            .and_then(|id| Some(id.to_string()))
-            .unwrap_or("".to_string());
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "".to_string());
         let id_str = if !id_str.is_empty() {
             format!("ID: {}", id_str)
         } else {
@@ -580,55 +580,41 @@ impl Term {
         //rows.push(Row::new(["Stats"]));
 
         let mut rows_stats = Vec::new();
-        for field_type in [
-            PlayerField::Stat(StatType::Strength),
-            PlayerField::Stat(StatType::Dexterity),
-            PlayerField::Stat(StatType::Poise),
-            PlayerField::Stat(StatType::Wisdom),
-            PlayerField::Stat(StatType::Intelligence),
-            PlayerField::Stat(StatType::Charisma),
-        ] {
-            // TODO: avoid to_string()'ing everything
-            // TODO: make this actually readable and easy to understand
-            let (style, stat) = match (selected, selected_str) {
-                (Some(selected), Some(string)) => {
-                    if selected == field_type {
-                        (selected_style, string.to_string())
-                    } else {
-                        (
-                            Style::default(),
-                            match field_type {
-                                PlayerField::Stat(StatType::Strength) => player.stats.strength,
-                                PlayerField::Stat(StatType::Dexterity) => player.stats.dexterity,
-                                PlayerField::Stat(StatType::Poise) => player.stats.poise,
-                                PlayerField::Stat(StatType::Wisdom) => player.stats.wisdom,
-                                PlayerField::Stat(StatType::Intelligence) => {
-                                    player.stats.intelligence
-                                }
-                                PlayerField::Stat(StatType::Charisma) => player.stats.charisma,
-                                _ => unreachable!(),
+        {
+            // TODO: using a Mutex was a bad idea...
+            let stat_list = STAT_LIST.lock().unwrap();
+            for (i, (&stat, stat_name)) in stat_list.as_vec().iter().enumerate() {
+                // TODO: avoid to_string()'ing everything
+                // TODO: make this actually readable and easy to understand
+                let (style, stat_text) = match (selected, selected_str) {
+                    (Some(selected), Some(string)) => {
+                        if let PlayerField::Stat(selected) = selected {
+                            if selected == i {
+                                (selected_style, string.to_string())
+                            } else {
+                                (Style::default(), player.stats.get(stat).to_string())
                             }
-                            .to_string(),
-                        )
+                        } else {
+                            (Style::default(), player.stats.get(stat).to_string())
+                        }
                     }
-                }
-                (_, _) => (
-                    Style::default(),
-                    match field_type {
-                        PlayerField::Stat(StatType::Strength) => player.stats.strength,
-                        PlayerField::Stat(StatType::Dexterity) => player.stats.dexterity,
-                        PlayerField::Stat(StatType::Poise) => player.stats.poise,
-                        PlayerField::Stat(StatType::Wisdom) => player.stats.wisdom,
-                        PlayerField::Stat(StatType::Intelligence) => player.stats.intelligence,
-                        PlayerField::Stat(StatType::Charisma) => player.stats.charisma,
-                        _ => unreachable!(),
+                    (_, _) => {
+                        if let Some(PlayerField::Stat(selected)) = selected {
+                            if selected == i {
+                                (selected_style, player.stats.get(stat).to_string())
+                            } else {
+                                (Style::default(), player.stats.get(stat).to_string())
+                            }
+                        } else {
+                            (Style::default(), player.stats.get(stat).to_string())
+                        }
                     }
-                    .to_string(),
-                ),
-            };
-            rows_stats.push(
-                Row::new::<[Cell; 2]>([field_type.to_string().into(), stat.into()]).style(style),
-            );
+                };
+                rows_stats.push(
+                    Row::new::<[Cell; 2]>([stat_name.to_string().into(), stat_text.into()])
+                        .style(style),
+                );
+            }
         }
 
         //rows.push(Row::new(["Skills"]));
@@ -897,12 +883,13 @@ impl Term {
             let player = players.get(&selected).unwrap();
             Some(match selected_field {
                 PlayerField::Name => player.name.clone(),
-                PlayerField::Stat(StatType::Strength) => player.stats.strength.to_string(),
-                PlayerField::Stat(StatType::Dexterity) => player.stats.dexterity.to_string(),
-                PlayerField::Stat(StatType::Poise) => player.stats.poise.to_string(),
-                PlayerField::Stat(StatType::Wisdom) => player.stats.wisdom.to_string(),
-                PlayerField::Stat(StatType::Intelligence) => player.stats.intelligence.to_string(),
-                PlayerField::Stat(StatType::Charisma) => player.stats.charisma.to_string(),
+                PlayerField::Stat(i) => {
+                    // TODO: maybe do this conversion somewhere else?
+                    let stat_list = STAT_LIST.lock().unwrap();
+                    let vec = stat_list.as_vec();
+                    let id = *vec.get(i).unwrap().0;
+                    player.stats.get(id).to_string()
+                }
                 PlayerField::SkillName(i) => player.skills[i].name.clone(),
                 PlayerField::SkillCD(i) => player.skills[i].cooldown.to_string(),
             })

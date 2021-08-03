@@ -1,6 +1,8 @@
+use crate::skill::Skill;
+use crate::stats::Stats;
+use crate::status::Status;
 use crate::status::StatusCooldownType;
 use crate::term::Term;
-use crate::{Skill, Stats, Status};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

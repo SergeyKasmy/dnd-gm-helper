@@ -1,20 +1,82 @@
+// TODO: add game chooser w/ separate stats and players
 // TODO: add force crash with vars and bt
 mod player;
 mod skill;
-mod stat;
+mod stats;
 mod status;
 mod term;
 
+use once_cell::sync::Lazy;
 use player::{Player, Players};
 use skill::Skill;
-use stat::{StatType, Stats};
-use status::{Status, StatusCooldownType};
+use stats::StatList;
+use status::StatusCooldownType;
 use std::collections::HashMap;
+use std::sync::Mutex;
 use term::{
     action_enums::{CharacterMenuAction, GameAction, MainMenuAction},
     player_field::PlayerField,
     CharacterMenuMode, Term,
 };
+
+// TODO: that's... not so good. Don't do such stupid things next time, mate
+pub static STAT_LIST: Lazy<Mutex<StatList>> = Lazy::new(|| {
+    let mut stats: HashMap<usize, String> = HashMap::new();
+    stats.insert(0, "Strength".to_string());
+    stats.insert(1, "Dexterity".to_string());
+    stats.insert(2, "Poise".to_string());
+    stats.insert(3, "Wisdom".to_string());
+    stats.insert(4, "Intelligence".to_string());
+    stats.insert(5, "Charisma".to_string());
+    Mutex::new(StatList::new(stats))
+});
+
+pub fn run() {
+    log::debug!("Starting...");
+    let term = Term::new();
+    let mut players: Players = HashMap::new();
+    let file_contents = std::fs::read_to_string("players.json");
+    if let Ok(json) = file_contents.map_err(|e| log::info!("players.json could not be read: {}", e))
+    {
+        match serde_json::from_str(&json) {
+            Ok(data) => {
+                log::debug!("Read from the db: {:#?}", data);
+                players = data;
+            }
+            Err(_) => {
+                // TODO: convert old format with Vec to the new with HashMap
+                log::error!("The database is corrupted");
+                if term.messagebox_yn("The database is corrupted. Continue?") {
+                    let db_bak = format!(
+                        "players.json.bak-{}",
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs()
+                    );
+                    log::info!("Coping the old corrupted db to {}", db_bak);
+                    let _ = std::fs::copy("players.json", db_bak)
+                        .map_err(|e| log::error!("Error copying: {}", e));
+                } else {
+                    return;
+                }
+            }
+        }
+    }
+
+    loop {
+        match term.draw_main_menu() {
+            MainMenuAction::Play => game_start(&term, &mut players),
+            MainMenuAction::Edit => character_menu(&term, &mut players),
+            MainMenuAction::Quit => break,
+        }
+    }
+
+    log::debug!("Saving player data to the db");
+    let _ = std::fs::write("players.json", serde_json::to_string(&players).unwrap())
+        .map_err(|e| log::error!("Error saving to the db: {}", e));
+    log::debug!("Exiting...");
+}
 
 fn game_start(term: &Term, players: &mut Players) {
     log::debug!("In the game menu...");
@@ -60,7 +122,7 @@ fn game_start(term: &Term, players: &mut Players) {
                             log::debug!("Chose skill #{}", input);
                             match skills.get_mut(input) {
                                 Some(skill) => {
-                                    if let Err(_) = skill.r#use() {
+                                    if skill.r#use().is_err() {
                                         term.messagebox("Skill still on cooldown");
                                     }
                                     break;
@@ -112,53 +174,6 @@ fn game_start(term: &Term, players: &mut Players) {
     }
 
     log::debug!("Exiting the game...");
-}
-
-pub fn run() {
-    log::debug!("Starting...");
-    let term = Term::new();
-    let mut players: Players = HashMap::new();
-    let file_contents = std::fs::read_to_string("players.json");
-    if let Ok(json) = file_contents.map_err(|e| log::info!("players.json could not be read: {}", e))
-    {
-        match serde_json::from_str(&json) {
-            Ok(data) => {
-                log::debug!("Read from the db: {:#?}", data);
-                players = data;
-            }
-            Err(_) => {
-                // TODO: convert old format with Vec to the new with HashMap
-                log::error!("The database is corrupted");
-                if term.messagebox_yn("The database is corrupted. Continue?") {
-                    let db_bak = format!(
-                        "players.json.bak-{}",
-                        std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs()
-                    );
-                    log::info!("Coping the old corrupted db to {}", db_bak);
-                    let _ = std::fs::copy("players.json", db_bak)
-                        .map_err(|e| log::error!("Error copying: {}", e));
-                } else {
-                    return;
-                }
-            }
-        }
-    }
-
-    loop {
-        match term.draw_main_menu() {
-            MainMenuAction::Play => game_start(&term, &mut players),
-            MainMenuAction::Edit => character_menu(&term, &mut players),
-            MainMenuAction::Quit => break,
-        }
-    }
-
-    log::debug!("Saving player data to the db");
-    let _ = std::fs::write("players.json", serde_json::to_string(&players).unwrap())
-        .map_err(|e| log::error!("Error saving to the db: {}", e));
-    log::debug!("Exiting...");
 }
 
 fn character_menu(term: &Term, players: &mut Players) {
@@ -271,28 +286,30 @@ fn edit_player(term: &Term, players: &mut Players, id: usize) {
                             _ => selected_field,
                         }
                     }
-                    PlayerField::Stat(stat) => {
-                        let current_stat = match stat {
-                            StatType::Strength => &mut player.stats.strength,
-                            StatType::Dexterity => &mut player.stats.dexterity,
-                            StatType::Poise => &mut player.stats.poise,
-                            StatType::Wisdom => &mut player.stats.wisdom,
-                            StatType::Intelligence => &mut player.stats.intelligence,
-                            StatType::Charisma => &mut player.stats.charisma,
+                    // TODO: maybe try to integrate stat id together with selected id in the enum?
+                    PlayerField::Stat(selected) => {
+                        let stat_id = {
+                            let stat_list = STAT_LIST.lock().unwrap();
+                            let vec = stat_list.as_vec();
+                            *vec.get(selected).unwrap().0
                         };
 
                         if let Ok(buffer) = buffer
-                            .parse::<i64>()
-                            .map_err(|e| log::error!("Error parsing new {:?} value: {}", stat, e))
+                            .parse::<i32>()
+                            //.map_err(|e| log::error!("Error parsing new {:?} value: {}", stat, e))
+                            .map_err(|e| {
+                                log::error!("Error parsing new stat #{} value: {}", stat_id, e)
+                            })
                         {
                             log::debug!(
-                                "Chaning player #{} stat {:?}: from {} to {}",
+                                //"Chaning player #{} stat {:?}: from {} to {}",
+                                "Chaning player #{} stat #{} to {}",
                                 id,
-                                stat,
-                                current_stat,
+                                //stat,
+                                stat_id,
                                 buffer
                             );
-                            *current_stat = buffer;
+                            player.stats.set(stat_id, buffer);
                             selected_field = match field_offset.unwrap_or(1) {
                                 1 => selected_field.next(),
                                 -1 => selected_field.prev(),

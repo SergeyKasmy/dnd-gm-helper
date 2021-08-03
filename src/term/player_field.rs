@@ -1,10 +1,10 @@
-use crate::StatType;
+use crate::STAT_LIST;
 use std::fmt;
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum PlayerField {
     Name,
-    Stat(StatType),
+    Stat(usize),
     SkillName(usize),
     SkillCD(usize),
 }
@@ -12,15 +12,24 @@ pub enum PlayerField {
 impl PlayerField {
     pub fn next(&self) -> PlayerField {
         match self {
-            PlayerField::Name => PlayerField::Stat(StatType::Strength),
-            PlayerField::Stat(stat) => match stat {
-                StatType::Strength => PlayerField::Stat(StatType::Dexterity),
-                StatType::Dexterity => PlayerField::Stat(StatType::Poise),
-                StatType::Poise => PlayerField::Stat(StatType::Wisdom),
-                StatType::Wisdom => PlayerField::Stat(StatType::Intelligence),
-                StatType::Intelligence => PlayerField::Stat(StatType::Charisma),
-                StatType::Charisma => PlayerField::SkillName(0),
-            },
+            PlayerField::Name => {
+                let stat_list = STAT_LIST.lock().unwrap();
+                let vec = stat_list.as_vec();
+                // TODO: avoid using vec, use map's iter directly
+                if !vec.is_empty() {
+                    PlayerField::Stat(0)
+                } else {
+                    // TODO: do the same check as above
+                    PlayerField::SkillName(0)
+                }
+            }
+            PlayerField::Stat(selected) => {
+                if *selected < STAT_LIST.lock().unwrap().len() - 1 {
+                    PlayerField::Stat(*selected + 1)
+                } else {
+                    PlayerField::SkillName(0)
+                }
+            }
             PlayerField::SkillName(i) => PlayerField::SkillCD(*i),
             PlayerField::SkillCD(i) => PlayerField::SkillName(*i + 1),
         }
@@ -29,17 +38,16 @@ impl PlayerField {
     pub fn prev(&self) -> PlayerField {
         match self {
             PlayerField::Name => PlayerField::Name,
-            PlayerField::Stat(stat) => match stat {
-                StatType::Strength => PlayerField::Name,
-                StatType::Dexterity => PlayerField::Stat(StatType::Strength),
-                StatType::Poise => PlayerField::Stat(StatType::Dexterity),
-                StatType::Wisdom => PlayerField::Stat(StatType::Poise),
-                StatType::Intelligence => PlayerField::Stat(StatType::Wisdom),
-                StatType::Charisma => PlayerField::Stat(StatType::Intelligence),
-            },
+            PlayerField::Stat(i) => {
+                if *i == 0 {
+                    PlayerField::Name
+                } else {
+                    PlayerField::Stat(*i - 1)
+                }
+            }
             PlayerField::SkillName(i) => {
                 if *i == 0 {
-                    PlayerField::Stat(StatType::Charisma)
+                    PlayerField::Stat(STAT_LIST.lock().unwrap().len() - 1)
                 } else {
                     PlayerField::SkillCD(*i - 1)
                 }
@@ -51,14 +59,11 @@ impl PlayerField {
 
 impl fmt::Display for PlayerField {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        // TODO: avoid holding the Mutex for so long for no reason
+        let stat_list = STAT_LIST.lock().unwrap();
         let out = match self {
             PlayerField::Name => "Name",
-            PlayerField::Stat(StatType::Strength) => "Strength",
-            PlayerField::Stat(StatType::Dexterity) => "Dexterity",
-            PlayerField::Stat(StatType::Poise) => "Poise",
-            PlayerField::Stat(StatType::Wisdom) => "Wisdom",
-            PlayerField::Stat(StatType::Intelligence) => "Intelligence",
-            PlayerField::Stat(StatType::Charisma) => "Charisma",
+            PlayerField::Stat(i) => stat_list.get_name(*i),
             PlayerField::SkillName(_) => "", // not intended for actual use
             PlayerField::SkillCD(_) => "",
         };
