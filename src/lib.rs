@@ -123,7 +123,6 @@ fn game_start(term: &Term, players: &mut Players) {
             log::debug!("Current turn: {} #{}", get_player!(players, id).name, id);
             loop {
                 match term.draw_game(get_player!(players, id)) {
-                    // TODO: reorder players + sorting
                     // TODO: combine lesser used options into a menu
                     // TODO: use skills on others -> adds status
                     // TODO: rename "Drain status" to "Got hit"/"Hit mob"

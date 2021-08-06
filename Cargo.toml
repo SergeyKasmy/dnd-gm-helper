@@ -3,6 +3,9 @@ name = "dnd-gm-helper"
 version = "0.2.2"
 edition = "2018"
 
+[profile.release]
+lto = true
+
 [dependencies]
 crossterm = "0.19.0"
 log = { version = "0.4.14", features = ["release_max_level_info"] }

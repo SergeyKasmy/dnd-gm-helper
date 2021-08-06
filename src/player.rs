@@ -11,13 +11,25 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::rc::Weak;
 
+pub type Hp = u16;
+
+pub enum PlayerState {
+    Alive(Hp),
+    Dead,
+}
+
 #[derive(Clone, serde::Serialize, serde::Deserialize, Default, Debug)]
 pub struct Player {
+    // permanent state
     pub name: String,
     pub stats: Stats,
+    max_hp: Hp,
+
+    // temporary state
+    hp: Hp,
+    money: i64,
     pub skills: Vec<Skill>,
     pub statuses: Vec<Status>,
-    pub money: i64,
 }
 
 impl Player {
@@ -50,6 +62,31 @@ impl Player {
         });
         // remove all statuses that have run out = retain all statuses that haven't yet run out
         self.statuses.retain(|status| status.duration > 0);
+    }
+
+    fn get_player_state(&self) -> PlayerState {
+        if self.hp == 0 {
+            PlayerState::Dead
+        } else {
+            PlayerState::Alive(self.hp)
+        }
+    }
+
+    pub fn damage(&mut self, amount: Hp) -> PlayerState {
+        if let Some(hp) = self.hp.checked_add(amount) {
+            self.hp = hp;
+        }
+
+        self.get_player_state()
+    }
+
+    pub fn heal(&mut self, mut amount: Hp) -> PlayerState {
+        if self.hp + amount > self.max_hp {
+            amount = self.max_hp - self.hp;
+        }
+
+        self.hp += amount;
+        self.get_player_state()
     }
 
     pub fn manage_money(&mut self, term: &Term) {
