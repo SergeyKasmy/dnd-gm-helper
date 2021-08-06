@@ -1,23 +1,23 @@
 // TODO: add game chooser w/ separate stats and players
 // TODO: add force crash with vars and bt
+pub mod action_enums;
 mod player;
+pub mod player_field;
 mod skill;
 mod stats;
 mod status;
 mod term;
 
+use action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use once_cell::sync::Lazy;
 use player::{Player, Players};
+use player_field::PlayerField;
 use skill::Skill;
 use stats::StatList;
 use status::StatusCooldownType;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use term::{
-    action_enums::{CharacterMenuAction, GameAction, MainMenuAction},
-    player_field::PlayerField,
-    CharacterMenuMode, Term,
-};
+use term::{CharacterMenuMode, Term};
 
 // TODO: that's... not so good. Don't do such stupid things next time, mate
 pub static STAT_LIST: Lazy<Mutex<StatList>> = Lazy::new(|| {
@@ -31,17 +31,24 @@ pub static STAT_LIST: Lazy<Mutex<StatList>> = Lazy::new(|| {
     Mutex::new(StatList::new(stats))
 });
 
-
 macro_rules! get_player {
     ($players:ident, $i:expr) => {
-        $players.get($i).ok_or(()).map_err(|_| log::error!("{} is not a valid id", $i)).unwrap()
-    }
+        $players
+            .get($i)
+            .ok_or(())
+            .map_err(|_| log::error!("{} is not a valid id", $i))
+            .unwrap()
+    };
 }
 
 macro_rules! get_player_mut {
     ($players:ident, $i:expr) => {
-        $players.get_mut($i).ok_or(()).map_err(|_| log::error!("{} is not a valid id", $i)).unwrap()
-    }
+        $players
+            .get_mut($i)
+            .ok_or(())
+            .map_err(|_| log::error!("{} is not a valid id", $i))
+            .unwrap()
+    };
 }
 
 pub fn run() {
@@ -101,7 +108,11 @@ fn game_start(term: &Term, players: &mut Players) {
     let mut next_player = NextPlayerState::Default;
 
     // TODO: do this only if player_order is empty
-    let player_order = players.as_vec().iter().map(|(id, _)| *id).collect::<Vec<usize>>();
+    let player_order = players
+        .as_vec()
+        .iter()
+        .map(|(id, _)| *id)
+        .collect::<Vec<usize>>();
     'game: loop {
         if let NextPlayerState::Pending = next_player {
             log::debug!("Pending a next player change.");
@@ -167,7 +178,10 @@ fn game_start(term: &Term, players: &mut Players) {
                     }
                     GameAction::ClearStatuses => get_player_mut!(players, id).statuses.clear(),
                     GameAction::ResetSkillsCD => {
-                        log::debug!("Resetting all skill cd for {}", get_player!(players, id).name);
+                        log::debug!(
+                            "Resetting all skill cd for {}",
+                            get_player!(players, id).name
+                        );
                         get_player_mut!(players, id)
                             .skills
                             .iter_mut()

@@ -1,19 +1,17 @@
-pub mod action_enums;
 mod list_state_next;
-pub mod player_field;
 
-use std::rc::Weak;
+use crate::action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use crate::player::{Player, Players};
+use crate::player_field::PlayerField;
 use crate::skill::Skill;
 use crate::status::{Status, StatusCooldownType, StatusType};
-use crate::term::action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use crate::term::list_state_next::ListStateNext;
-use crate::term::player_field::PlayerField;
 use crate::STAT_LIST;
 use crossterm::event::{read as read_event, Event, KeyCode};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{stdout, Stdout};
+use std::rc::Weak;
 use tui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -849,15 +847,11 @@ impl Term {
         let (player_list, id_map) = Term::get_pretty_player_list(players);
         // TODO: avoid collecting twice
         let list = player_list
-                .iter()
-                .map(|(_, x)| x.upgrade().unwrap().name.clone())
-                .collect::<Vec<String>>();
+            .iter()
+            .map(|(_, x)| x.upgrade().unwrap().name.clone())
+            .collect::<Vec<String>>();
         let list_str = list.iter().map(|x| x.as_str()).collect::<Vec<&str>>();
-        return match self.messagebox_with_options(
-            "Pick a player",
-            &list_str,
-            true,
-        ) {
+        return match self.messagebox_with_options("Pick a player", &list_str, true) {
             Some(num) => Some(players.get(Term::get_id_from_sel(num, &id_map)).unwrap()),
             None => None,
         };

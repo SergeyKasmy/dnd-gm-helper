@@ -1,5 +1,3 @@
-use std::fmt;
-use std::marker::PhantomData;
 use crate::skill::Skill;
 use crate::stats::Stats;
 use crate::status::Status;
@@ -8,6 +6,8 @@ use crate::term::Term;
 use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use std::collections::HashMap;
+use std::fmt;
+use std::marker::PhantomData;
 use std::rc::Rc;
 use std::rc::Weak;
 
@@ -105,14 +105,22 @@ pub struct Players {
 impl Players {
     pub fn new(new_map: HashMap<usize, Player>) -> Players {
         Players {
-            map: new_map.into_iter().map(|(id, pl)| (id, Rc::new(pl))).collect(),
+            map: new_map
+                .into_iter()
+                .map(|(id, pl)| (id, Rc::new(pl)))
+                .collect(),
             sorted_vec: None,
         }
     }
 
     pub fn get(&self, id: usize) -> Option<&Player> {
         let pl = self.map.get(&id);
-        log::debug!("Player #{} refs: {:?} strong, {:?} weak", id, pl.map(|x| Rc::strong_count(x)), pl.map(|x| Rc::weak_count(x)));
+        log::debug!(
+            "Player #{} refs: {:?} strong, {:?} weak",
+            id,
+            pl.map(|x| Rc::strong_count(x)),
+            pl.map(|x| Rc::weak_count(x))
+        );
         pl.map(|x| x.as_ref())
     }
 
@@ -131,7 +139,9 @@ impl Players {
         // invalidate sorted vec
         self.sorted_vec = None;
         // TODO: remove this clone
-        self.map.remove_entry(&id).map(|(id, pl)| (id, (*pl.as_ref()).clone()))
+        self.map
+            .remove_entry(&id)
+            .map(|(id, pl)| (id, (*pl.as_ref()).clone()))
     }
 
     pub fn keys(&self) -> std::collections::hash_map::Keys<usize, Rc<Player>> {
@@ -148,10 +158,19 @@ impl Players {
 
     pub fn as_vec(&mut self) -> &[(usize, Weak<Player>)] {
         if self.sorted_vec.is_none() {
-                log::debug!("Sorting player list");
-                let mut unsorted_vec = self.map.iter().map(|(a, b)| (*a, Rc::downgrade(b))).collect::<Vec<(usize, Weak<Player>)>>();
-                unsorted_vec.sort_by(|a, b| a.1.upgrade().unwrap().name.cmp(&b.1.upgrade().unwrap().name));
-                self.sorted_vec = Some(unsorted_vec);
+            log::debug!("Sorting player list");
+            let mut unsorted_vec = self
+                .map
+                .iter()
+                .map(|(a, b)| (*a, Rc::downgrade(b)))
+                .collect::<Vec<(usize, Weak<Player>)>>();
+            unsorted_vec.sort_by(|a, b| {
+                a.1.upgrade()
+                    .unwrap()
+                    .name
+                    .cmp(&b.1.upgrade().unwrap().name)
+            });
+            self.sorted_vec = Some(unsorted_vec);
         }
         match &self.sorted_vec {
             Some(vec) => vec.as_slice(),
