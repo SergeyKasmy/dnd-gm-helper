@@ -2,4 +2,4 @@
 /Cargo.lock
 
 players.json*
-dnd.log
+*.log

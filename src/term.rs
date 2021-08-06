@@ -2,9 +2,9 @@ pub mod action_enums;
 mod list_state_next;
 pub mod player_field;
 
+use std::rc::Weak;
 use crate::player::{Player, Players};
 use crate::skill::Skill;
-use crate::sort_player_list;
 use crate::status::{Status, StatusCooldownType, StatusType};
 use crate::term::action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use crate::term::list_state_next::ListStateNext;
@@ -69,12 +69,12 @@ impl Term {
     }
 
     fn get_pretty_player_list(
-        players: &Players,
-    ) -> (Vec<(&usize, &Player)>, HashMap<usize, usize>) {
-        let pretty_list = sort_player_list(players);
+        players: &mut Players,
+    ) -> (&[(usize, Weak<Player>)], HashMap<usize, usize>) {
+        let pretty_list = players.as_vec();
         let mut id_map = HashMap::new();
         for (i, (id, _)) in pretty_list.iter().enumerate() {
-            id_map.insert(i, **id);
+            id_map.insert(i, *id);
         }
 
         (pretty_list, id_map)
@@ -847,16 +847,18 @@ impl Term {
 
     pub fn pick_player<'a>(&self, players: &'a mut Players) -> Option<&'a Player> {
         let (player_list, id_map) = Term::get_pretty_player_list(players);
+        // TODO: avoid collecting twice
+        let list = player_list
+                .iter()
+                .map(|(_, x)| x.upgrade().unwrap().name.clone())
+                .collect::<Vec<String>>();
+        let list_str = list.iter().map(|x| x.as_str()).collect::<Vec<&str>>();
         return match self.messagebox_with_options(
             "Pick a player",
-            player_list
-                .iter()
-                .map(|(_, x)| x.name.as_str())
-                .collect::<Vec<&str>>()
-                .as_slice(),
+            &list_str,
             true,
         ) {
-            Some(num) => Some(players.get(&Term::get_id_from_sel(num, &id_map)).unwrap()),
+            Some(num) => Some(players.get(Term::get_id_from_sel(num, &id_map)).unwrap()),
             None => None,
         };
     }
@@ -880,7 +882,7 @@ impl Term {
             selected_field,
         } = mode
         {
-            let player = players.get(&selected).unwrap();
+            let player = players.get(selected).unwrap();
             Some(match selected_field {
                 PlayerField::Name => player.name.clone(),
                 PlayerField::Stat(i) => {
@@ -905,7 +907,8 @@ impl Term {
 
         for (_, player) in player_pretty_list {
             log::debug!("Adding player to the player list: {:#?}", player);
-            player_list_items.push(ListItem::new(player.name.as_str()));
+            // TODO: avoid cloning for the 100th time
+            player_list_items.push(ListItem::new(player.upgrade().unwrap().name.clone()));
         }
         log::debug!("Player item list vec len is {}", player_list_items.len());
         // selected item by default
@@ -991,7 +994,7 @@ impl Term {
                                 None
                             };
                         let id = Term::get_id_from_sel(num, &player_list_id_map);
-                        let selected_player = players.get(&id).unwrap();
+                        let selected_player = players.get(id).unwrap();
                         log::debug!("Got player #{}: {:#?}", id, selected_player);
                         let mut player_stats = Term::player_stats(
                             selected_player,

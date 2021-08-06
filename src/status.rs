@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 // TODO: use HashMap
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum StatusType {
     Discharge,
     FireAttack,
@@ -16,14 +16,14 @@ pub enum StatusType {
     Stun,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub enum StatusCooldownType {
     Normal,
     Attacking,
     Attacked,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Status {
     pub status_type: StatusType,
     pub status_cooldown_type: StatusCooldownType,

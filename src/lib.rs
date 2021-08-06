@@ -31,10 +31,23 @@ pub static STAT_LIST: Lazy<Mutex<StatList>> = Lazy::new(|| {
     Mutex::new(StatList::new(stats))
 });
 
+
+macro_rules! get_player {
+    ($players:ident, $i:expr) => {
+        $players.get($i).ok_or(()).map_err(|_| log::error!("{} is not a valid id", $i)).unwrap()
+    }
+}
+
+macro_rules! get_player_mut {
+    ($players:ident, $i:expr) => {
+        $players.get_mut($i).ok_or(()).map_err(|_| log::error!("{} is not a valid id", $i)).unwrap()
+    }
+}
+
 pub fn run() {
     log::debug!("Starting...");
     let term = Term::new();
-    let mut players: Players = HashMap::new();
+    let mut players = Players::default();
     let file_contents = std::fs::read_to_string("players.json");
     if let Ok(json) = file_contents.map_err(|e| log::info!("players.json could not be read: {}", e))
     {
@@ -87,6 +100,8 @@ fn game_start(term: &Term, players: &mut Players) {
     }
     let mut next_player = NextPlayerState::Default;
 
+    // TODO: do this only if player_order is empty
+    let player_order = players.as_vec().iter().map(|(id, _)| *id).collect::<Vec<usize>>();
     'game: loop {
         if let NextPlayerState::Pending = next_player {
             log::debug!("Pending a next player change.");
@@ -96,23 +111,25 @@ fn game_start(term: &Term, players: &mut Players) {
             }
         }
 
-        for (_, player) in players.iter_mut() {
+        //for (id, player) in players.iter_mut() {
+        for &id in player_order.iter() {
             if let NextPlayerState::Picked(next_player) = next_player {
+                let player = get_player!(players, id);
                 if !std::ptr::eq(next_player, player) {
                     log::debug!("Skipping player {}", player.name);
                     continue;
                 }
             }
-            log::debug!("Current turn: {}", player.name);
+            log::debug!("Current turn: {} #{}", get_player!(players, id).name, id);
             loop {
-                match term.draw_game(player) {
+                match term.draw_game(get_player!(players, id)) {
                     // TODO: reorder players + sorting
                     // TODO: combine lesser used options into a menu
                     // TODO: use skills on others -> adds status
                     // TODO: rename "Drain status" to "Got hit"/"Hit mob"
                     GameAction::UseSkill => {
                         // TODO: rework
-                        let skills = &mut player.skills;
+                        let skills = &mut get_player_mut!(players, id).skills;
                         log::debug!("Choosing a skill to use");
                         loop {
                             let input = match term.choose_skill(skills) {
@@ -140,30 +157,31 @@ fn game_start(term: &Term, players: &mut Players) {
                                 status.status_cooldown_type
                             );
 
-                            player.add_status(status);
+                            get_player_mut!(players, id).add_status(status);
                         }
                     }
                     GameAction::DrainStatusAttacking => {
-                        player.drain_status(StatusCooldownType::Attacking)
+                        get_player_mut!(players, id).drain_status(StatusCooldownType::Attacking)
                     }
                     GameAction::DrainStatusAttacked => {
-                        player.drain_status(StatusCooldownType::Attacked)
+                        get_player_mut!(players, id).drain_status(StatusCooldownType::Attacked)
                     }
-                    GameAction::ClearStatuses => player.statuses.clear(),
+                    GameAction::ClearStatuses => get_player_mut!(players, id).statuses.clear(),
                     GameAction::ResetSkillsCD => {
-                        log::debug!("Resetting all skill cd for {}", player.name);
-                        player
+                        log::debug!("Resetting all skill cd for {}", get_player!(players, id).name);
+                        get_player_mut!(players, id)
                             .skills
                             .iter_mut()
                             .for_each(|skill| skill.available_after = 0);
                     }
-                    GameAction::ManageMoney => player.manage_money(term),
+                    GameAction::ManageMoney => get_player_mut!(players, id).manage_money(term),
                     GameAction::MakeTurn => {
-                        player.turn();
+                        get_player_mut!(players, id).turn();
                         break;
                     }
                     GameAction::SkipTurn => break,
                     GameAction::NextPlayerPick => {
+                        log::debug!("Pending a next player change");
                         next_player = NextPlayerState::Pending;
                         continue 'game;
                     }
@@ -190,16 +208,17 @@ fn character_menu(term: &Term, players: &mut Players) {
             .unwrap()
         {
             CharacterMenuAction::Add => {
-                log::debug!("Adding a new player");
                 let biggest_id = if let Some(num) = players.keys().max() {
                     num + 1
                 } else {
                     0
                 };
+                log::debug!("Adding a new player with id #{}", biggest_id);
                 players.insert(biggest_id, Player::default());
-                let id = players.len() - 1;
-                edit_player(term, players, id);
-                last_selected = Some(id);
+                edit_player(term, players, biggest_id);
+                // TODO: find out which pos the new player has in the list
+                //last_selected = Some(id);
+                last_selected = None;
             }
             CharacterMenuAction::Edit(num) => {
                 log::debug!("Editing player #{}", num);
@@ -212,7 +231,7 @@ fn character_menu(term: &Term, players: &mut Players) {
                 if term.messagebox_yn("Are you sure?") {
                     log::debug!("Deleting #{}", num);
                     // TODO: fix logic. Use the actual id instead of order id
-                    players.remove(&num);
+                    players.remove(num);
                     last_selected = None;
                 } else {
                     log::debug!("Not confirmed");
@@ -233,22 +252,13 @@ fn character_menu(term: &Term, players: &mut Players) {
 }
 
 fn edit_player(term: &Term, players: &mut Players, id: usize) {
-    macro_rules! get_player {
-        () => {
-            players
-                .get_mut(&id)
-                .ok_or(0)
-                .map_err(|_| log::error!("Player #{} wasn't found in the hashmap", id))
-                .unwrap()
-        };
-    }
     log::debug!("Editing player #{}", id);
     let mut selected_field = PlayerField::Name; // TODO: maybe use something like new()?
     loop {
         // init fields if they don't exist
         match selected_field {
             PlayerField::SkillName(skill_id) | PlayerField::SkillCD(skill_id) => {
-                let player = get_player!();
+                let player = get_player_mut!(players, id);
                 if player.skills.get(skill_id).is_none() {
                     log::debug!("Going to modify a skill but it doesn't yet exist. Creating...");
                     player.skills.push(Skill::default())
@@ -268,7 +278,7 @@ fn edit_player(term: &Term, players: &mut Players, id: usize) {
                 buffer,
                 field_offset,
             }) => {
-                let player = get_player!();
+                let player = get_player_mut!(players, id);
                 match selected_field {
                     PlayerField::Name => {
                         log::debug!(
@@ -357,7 +367,7 @@ fn edit_player(term: &Term, players: &mut Players, id: usize) {
             }
             // TODO: properly check for empty buffer in player and skill names
             Some(CharacterMenuAction::DoneEditing) => {
-                let player = get_player!();
+                let player = get_player_mut!(players, id);
                 log::debug!("Done editing {}", player.name);
                 if let Some(skill) = player.skills.last() {
                     if skill.name.is_empty() {
@@ -375,11 +385,4 @@ fn edit_player(term: &Term, players: &mut Players, id: usize) {
     }
 
     log::debug!("Exiting out of the character menu...");
-}
-
-fn sort_player_list(players: &Players) -> Vec<(&usize, &Player)> {
-    log::debug!("Sorting player list");
-    let mut players_sorted = players.iter().collect::<Vec<(&usize, &Player)>>();
-    players_sorted.sort_unstable_by(|a, b| a.1.name.cmp(&b.1.name));
-    players_sorted
 }

@@ -20,6 +20,8 @@ pub enum StatType {
 #[derive(Clone, Debug)]
 pub struct StatList {
     map: HashMap<usize, String>,
+    // TODO: maybe keep a sorted vec inside for faster access to ui stuff
+    // and selection -> id convertion
 }
 
 impl StatList {
