@@ -564,7 +564,7 @@ impl Term {
                         'q' => return GameAction::Quit,
                         _ => (),
                     },
-                    KeyCode::End => return GameAction::Quit,
+                    KeyCode::Esc => return GameAction::Quit,
                     _ => (),
                 }
             }

@@ -110,12 +110,16 @@ pub fn run() {
             .collect::<Vec<&str>>();
         options.push("Add...");
         loop {
-            if let Some(num) = term.messagebox_with_options("Choose the game", &options, true) {
-                if num >= games.len() {
-                    let name = term.messagebox_with_input_field("Enter the name of the new game");
-                    games.push((name, GameState::default()));
+            match term.messagebox_with_options("Choose the game", &options, true) {
+                Some(num) => {
+                    if num >= games.len() {
+                        let name =
+                            term.messagebox_with_input_field("Enter the name of the new game");
+                        games.push((name, GameState::default()));
+                    }
+                    break num;
                 }
-                break num;
+                None => return,
             }
         }
     };
