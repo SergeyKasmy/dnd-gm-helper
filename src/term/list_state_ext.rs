@@ -1,11 +1,11 @@
 use tui::widgets::ListState;
 
-pub trait ListStateNext {
+pub trait ListStateExt {
     fn next(&mut self, len: usize) -> Option<usize>;
     fn prev(&mut self, len: usize) -> Option<usize>;
 }
 
-impl ListStateNext for ListState {
+impl ListStateExt for ListState {
     fn next(&mut self, len: usize) -> Option<usize> {
         let next_num = match self.selected() {
             Some(num) if len > 0 => {

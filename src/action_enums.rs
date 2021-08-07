@@ -1,6 +1,7 @@
 pub enum MainMenuAction {
     Play,
     Edit,
+    ReorderPlayers,
     Quit,
 }
 

@@ -1,11 +1,11 @@
-mod list_state_next;
+pub mod list_state_ext;
 
 use crate::action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use crate::player::{Player, Players};
 use crate::player_field::PlayerField;
 use crate::skill::Skill;
 use crate::status::{Status, StatusCooldownType, StatusType};
-use crate::term::list_state_next::ListStateNext;
+use crate::term::list_state_ext::ListStateExt;
 use crate::STAT_LIST;
 use crossterm::event::{read as read_event, Event, KeyCode};
 use std::cell::RefCell;
@@ -167,12 +167,13 @@ impl Term {
         )
     }
 
-    pub fn messagebox_with_options(
+    pub fn messagebox_with_options_immediate(
         &self,
         desc: &str,
         options: &[&str],
+        selected: Option<usize>,
         is_vertical: bool,
-    ) -> Option<usize> {
+    ) -> KeyCode {
         self.term.borrow_mut().clear().unwrap();
         if options.is_empty() {
             panic!("Can't show a dialog with no buttons")
@@ -214,7 +215,7 @@ impl Term {
         };
 
         let mut state = ListState::default();
-        state.select(Some(0));
+        state.select(selected);
         loop {
             self.term
                 .borrow_mut()
@@ -296,31 +297,49 @@ impl Term {
                 .unwrap();
 
             if let Event::Key(key) = read_event().unwrap() {
-                match key.code {
-                    KeyCode::Enter => return Some(state.selected().unwrap_or(0)),
-                    KeyCode::Char(ch) => {
-                        if let Some(num) = ch.to_digit(10) {
-                            let num = num as usize - 1;
-                            if num < options.len() {
-                                return Some(num);
-                            }
+                return key.code;
+            }
+        }
+    }
+
+    pub fn messagebox_with_options(
+        &self,
+        desc: &str,
+        options: &[&str],
+        is_vertical: bool,
+    ) -> Option<usize> {
+        let mut state = ListState::default();
+        state.select(Some(0));
+        loop {
+            match self.messagebox_with_options_immediate(
+                desc,
+                options,
+                state.selected(),
+                is_vertical,
+            ) {
+                KeyCode::Enter => return Some(state.selected().unwrap_or(0)),
+                KeyCode::Char(ch) => {
+                    if let Some(num) = ch.to_digit(10) {
+                        let num = num as usize - 1;
+                        if num < options.len() {
+                            return Some(num);
                         }
                     }
-                    KeyCode::Esc => return None,
-                    KeyCode::Right if !is_vertical => {
-                        state.next(options.len());
-                    }
-                    KeyCode::Left if !is_vertical => {
-                        state.prev(options.len());
-                    }
-                    KeyCode::Down if is_vertical => {
-                        state.next(options.len());
-                    }
-                    KeyCode::Up if is_vertical => {
-                        state.prev(options.len());
-                    }
-                    _ => (),
                 }
+                KeyCode::Esc => return None,
+                KeyCode::Right if !is_vertical => {
+                    state.next(options.len());
+                }
+                KeyCode::Left if !is_vertical => {
+                    state.prev(options.len());
+                }
+                KeyCode::Down if is_vertical => {
+                    state.next(options.len());
+                }
+                KeyCode::Up if is_vertical => {
+                    state.prev(options.len());
+                }
+                _ => (),
             }
         }
     }
@@ -376,7 +395,12 @@ impl Term {
 
     pub fn draw_main_menu(&self) -> MainMenuAction {
         self.term.borrow_mut().clear().unwrap();
-        let items = ["Start game", "Manage characters", "Save and quit"];
+        let items = [
+            "Start game",
+            "Manage characters",
+            "Change player order",
+            "Save and quit",
+        ];
         let mut list_state = ListState::default();
         list_state.select(Some(0));
         loop {
@@ -426,7 +450,8 @@ impl Term {
                     KeyCode::Char(ch) => match ch {
                         '1' => return MainMenuAction::Play,
                         '2' => return MainMenuAction::Edit,
-                        '3' | 'q' => {
+                        '3' => return MainMenuAction::ReorderPlayers,
+                        '4' | 'q' => {
                             if self.messagebox_yn("Are you sure you want to quit?") {
                                 return MainMenuAction::Quit;
                             }
@@ -444,7 +469,8 @@ impl Term {
                             return match i {
                                 0 => MainMenuAction::Play,
                                 1 => MainMenuAction::Edit,
-                                2 => MainMenuAction::Quit,
+                                2 => MainMenuAction::ReorderPlayers,
+                                3 => MainMenuAction::Quit,
                                 _ => unreachable!(),
                             };
                         }

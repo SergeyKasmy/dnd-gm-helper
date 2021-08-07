@@ -9,6 +9,7 @@ mod status;
 mod term;
 
 use action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
+use crossterm::event::KeyCode;
 use once_cell::sync::Lazy;
 use player::{Player, Players};
 use player_field::PlayerField;
@@ -17,7 +18,11 @@ use stats::StatList;
 use status::StatusCooldownType;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use term::list_state_ext::ListStateExt;
 use term::{CharacterMenuMode, Term};
+use tui::widgets::ListState;
+use serde::Serialize;
+use serde::Deserialize;
 
 // TODO: that's... not so good. Don't do such stupid things next time, mate
 pub static STAT_LIST: Lazy<Mutex<StatList>> = Lazy::new(|| {
@@ -30,6 +35,12 @@ pub static STAT_LIST: Lazy<Mutex<StatList>> = Lazy::new(|| {
     stats.insert(5, "Charisma".to_string());
     Mutex::new(StatList::new(stats))
 });
+
+#[derive(Serialize, Deserialize, Debug)]
+struct State {
+    players: Players,
+    order: Vec<usize>,
+}
 
 macro_rules! get_player {
     ($players:ident, $i:expr) => {
@@ -53,29 +64,34 @@ macro_rules! get_player_mut {
 
 pub fn run() {
     log::debug!("Starting...");
+    log_panics::init();
     let term = Term::new();
-    let mut players = Players::default();
-    let file_contents = std::fs::read_to_string("players.json");
-    if let Ok(json) = file_contents.map_err(|e| log::info!("players.json could not be read: {}", e))
+    let mut state = State {
+        players: Players::default(),
+        order: Vec::new(),
+    };
+
+    let file_contents = std::fs::read_to_string("game_state.json");
+    if let Ok(json) = file_contents.map_err(|e| log::info!("game_state.json could not be read: {}", e))
     {
         match serde_json::from_str(&json) {
             Ok(data) => {
                 log::debug!("Read from the db: {:#?}", data);
-                players = data;
+                state = data;
             }
             Err(_) => {
                 // TODO: convert old format with Vec to the new with HashMap
                 log::error!("The database is corrupted");
                 if term.messagebox_yn("The database is corrupted. Continue?") {
                     let db_bak = format!(
-                        "players.json.bak-{}",
+                        "game_state.json.bak-{}",
                         std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap()
                             .as_secs()
                     );
                     log::info!("Coping the old corrupted db to {}", db_bak);
-                    let _ = std::fs::copy("players.json", db_bak)
+                    let _ = std::fs::copy("game_state.json", db_bak)
                         .map_err(|e| log::error!("Error copying: {}", e));
                 } else {
                     return;
@@ -84,21 +100,38 @@ pub fn run() {
         }
     }
 
+    if !state.players.is_empty() && state.order.is_empty() {
+        state.order = state.players
+            .as_vec()
+            .iter()
+            .map(|(id, _)| *id)
+            .collect::<Vec<usize>>();
+    }
+
+
     loop {
         match term.draw_main_menu() {
-            MainMenuAction::Play => game_start(&term, &mut players),
-            MainMenuAction::Edit => character_menu(&term, &mut players),
+            MainMenuAction::Play => game_start(&term, &mut state.players, &state.order),
+            MainMenuAction::Edit => character_menu(&term, &mut state.players),
+            MainMenuAction::ReorderPlayers => {
+                if state.players.is_empty() {
+                    term.messagebox("Can't reorder when there are no players. Try again after you add some");
+                    continue;
+                }
+                state.order = reorder_players(&term, &state.order, &mut state.players)
+            }
             MainMenuAction::Quit => break,
         }
     }
 
-    log::debug!("Saving player data to the db");
-    let _ = std::fs::write("players.json", serde_json::to_string(&players).unwrap())
-        .map_err(|e| log::error!("Error saving to the db: {}", e));
+    log::debug!("Saving game state to the db");
+    let _ = std::fs::write("game_state.json", serde_json::to_string(&state).unwrap())
+        .map_err(|e| log::error!("Error saving game state to the db: {}", e));
+
     log::debug!("Exiting...");
 }
 
-fn game_start(term: &Term, players: &mut Players) {
+fn game_start(term: &Term, players: &mut Players, player_order: &[usize]) {
     log::debug!("In the game menu...");
     enum NextPlayerState {
         Default,
@@ -108,11 +141,6 @@ fn game_start(term: &Term, players: &mut Players) {
     let mut next_player = NextPlayerState::Default;
 
     // TODO: do this only if player_order is empty
-    let player_order = players
-        .as_vec()
-        .iter()
-        .map(|(id, _)| *id)
-        .collect::<Vec<usize>>();
     'game: loop {
         if let NextPlayerState::Pending = next_player {
             log::debug!("Pending a next player change.");
@@ -398,4 +426,65 @@ fn edit_player(term: &Term, players: &mut Players, id: usize) {
     }
 
     log::debug!("Exiting out of the character menu...");
+}
+
+fn reorder_players(term: &Term, old_player_order: &[usize], players: &mut Players) -> Vec<usize> {
+    let mut player_list = old_player_order
+        .iter()
+        .map(|&id| (id, players.get(id).unwrap().name.as_str()))
+        .collect::<Vec<(usize, &str)>>();
+    log::debug!("Old player order with names: {:#?}", player_list);
+    let mut state = ListState::default();
+    loop {
+        let name_list = player_list
+            .iter()
+            .map(|(_, name)| *name)
+            .collect::<Vec<&str>>();
+        match term.messagebox_with_options("Choose which player to move", &name_list, true) {
+            Some(num) => {
+                state.select(Some(num));
+                loop {
+                    let name_list = player_list
+                        .iter()
+                        .map(|(_, name)| *name)
+                        .collect::<Vec<&str>>();
+                    log::debug!("Moving player #{}", state.selected().unwrap());
+                    // TODO: move this inside Term. the controller should be Ui agnostic
+                    match term.messagebox_with_options_immediate(
+                        "Use arrows to move the player",
+                        &name_list,
+                        state.selected(),
+                        true,
+                    ) {
+                        // TODO: add more checks for unwrap()
+                        KeyCode::Down => {
+                            let selected = state.selected().unwrap();
+                            if selected + 1 >= player_list.len() {
+                                continue;
+                            }
+                            log::debug!("Old player order in the Vec: {:#?}", player_list);
+                            player_list.swap(selected, selected + 1);
+                            state.next(player_list.len());
+                        }
+                        KeyCode::Up => {
+                            let selected = state.selected().unwrap();
+                            if let None = selected.checked_sub(1) {
+                                continue;
+                            }
+                            log::debug!("Old player order in the Vec: {:#?}", player_list);
+                            player_list.swap(selected, selected - 1);
+                            state.prev(player_list.len());
+                        }
+                        KeyCode::Enter | KeyCode::Esc => {
+                            break;
+                        }
+                        _ => (),
+                    }
+                }
+            }
+            None => break,
+        }
+    }
+
+    player_list.into_iter().map(|(id, _)| id).collect()
 }
