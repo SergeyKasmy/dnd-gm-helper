@@ -81,11 +81,10 @@ impl Term {
     fn get_window_size(&self, window: Rect) -> (Rect, Rect) {
         let layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Min(10)].as_ref())
+            .constraints([Constraint::Min(10), Constraint::Length(1)].as_ref())
             .split(window);
 
-        // TODO: try moving these around
-        (layout[1], layout[0])
+        (layout[0], layout[1])
     }
 
     fn stylize_statusbar<'a, T: Into<Text<'a>>>(text: T, sbtype: StatusBarType) -> Paragraph<'a> {
@@ -432,7 +431,7 @@ impl Term {
                     frame.render_stateful_widget(list, menu_location, &mut list_state);
                     frame.render_widget(
                         Term::stylize_statusbar(
-                            format!(" dnd-gm-helper v{}", env!("CARGO_PKG_VERSION")),
+                            format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION")),
                             StatusBarType::Normal,
                         ),
                         statusbar_rect,
