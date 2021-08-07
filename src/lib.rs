@@ -372,13 +372,15 @@ fn edit_player(term: &Term, players: &mut Players, id: usize) {
                             player.name,
                             buffer
                         );
-                        let _ = std::mem::replace(&mut player.name, buffer);
+                        if !buffer.is_empty() {
+                            let _ = std::mem::replace(&mut player.name, buffer);
 
-                        // TODO: modify inplace
-                        selected_field = match field_offset.unwrap_or(1) {
-                            1 => selected_field.next(),
-                            -1 => selected_field.prev(),
-                            _ => selected_field,
+                            // TODO: modify inplace
+                            selected_field = match field_offset.unwrap_or(1) {
+                                1 => selected_field.next(),
+                                -1 => selected_field.prev(),
+                                _ => selected_field,
+                            }
                         }
                     }
                     // TODO: maybe try to integrate stat id together with selected id in the enum?
