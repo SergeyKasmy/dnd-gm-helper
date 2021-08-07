@@ -61,15 +61,19 @@ macro_rules! get_player_mut {
 }
 
 pub fn run() {
+    use std::panic;
+
     log::debug!("Starting...");
     log_panics::init();
+    if let Err(e) = panic::catch_unwind(start) {
+        let term = Term::new();
+        term.messagebox("sowwy! OwO the pwogwam cwashed! 🥺 pwease d-don't bwame the d-devewopew, òωó he's d-doing his best!");
+        panic::resume_unwind(e);
+    }
+}
+
+fn start() {
     let term = Term::new();
-    /*
-    let mut state = GameState {
-        players: Players::default(),
-        order: Vec::new(),
-    };
-    */
     let mut games: Vec<(String, GameState)> = Vec::new();
 
     let file_contents = std::fs::read_to_string("games.json");
