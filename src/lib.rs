@@ -1,5 +1,3 @@
-// TODO: add game chooser w/ separate stats and players
-// TODO: add force crash with vars and bt
 pub mod action_enums;
 mod player;
 pub mod player_field;
@@ -36,8 +34,8 @@ pub static STAT_LIST: Lazy<Mutex<StatList>> = Lazy::new(|| {
     Mutex::new(StatList::new(stats))
 });
 
-#[derive(Serialize, Deserialize, Debug)]
-struct State {
+#[derive(Serialize, Deserialize, Debug, Default)]
+struct GameState {
     players: Players,
     order: Vec<usize>,
 }
@@ -66,33 +64,34 @@ pub fn run() {
     log::debug!("Starting...");
     log_panics::init();
     let term = Term::new();
-    let mut state = State {
+    /*
+    let mut state = GameState {
         players: Players::default(),
         order: Vec::new(),
     };
+    */
+    let mut games: Vec<(String, GameState)> = Vec::new();
 
-    let file_contents = std::fs::read_to_string("game_state.json");
-    if let Ok(json) =
-        file_contents.map_err(|e| log::info!("game_state.json could not be read: {}", e))
-    {
+    let file_contents = std::fs::read_to_string("games.json");
+    if let Ok(json) = file_contents.map_err(|e| log::info!("games.json could not be read: {}", e)) {
         match serde_json::from_str(&json) {
             Ok(data) => {
                 log::debug!("Read from the db: {:#?}", data);
-                state = data;
+                games = data;
             }
             Err(_) => {
                 // TODO: convert old format with Vec to the new with HashMap
                 log::error!("The database is corrupted");
                 if term.messagebox_yn("The database is corrupted. Continue?") {
                     let db_bak = format!(
-                        "game_state.json.bak-{}",
+                        "games.json.bak-{}",
                         std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap()
                             .as_secs()
                     );
                     log::info!("Coping the old corrupted db to {}", db_bak);
-                    let _ = std::fs::copy("game_state.json", db_bak)
+                    let _ = std::fs::copy("games.json", db_bak)
                         .map_err(|e| log::error!("Error copying: {}", e));
                 } else {
                     return;
@@ -100,6 +99,28 @@ pub fn run() {
             }
         }
     }
+
+    // sort games by name
+    games.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+    let game_num = {
+        let mut options = games
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<&str>>();
+        options.push("Add...");
+        loop {
+            if let Some(num) = term.messagebox_with_options("Choose the game", &options, true) {
+                if num >= games.len() {
+                    let name = term.messagebox_with_input_field("Enter the name of the new game");
+                    games.push((name, GameState::default()));
+                }
+                break num;
+            }
+        }
+    };
+
+    let mut state = &mut games.get_mut(game_num).unwrap().1;
 
     if !state.players.is_empty() && state.order.is_empty() {
         state.order = state
@@ -139,9 +160,9 @@ pub fn run() {
         }
     }
 
-    log::debug!("Saving game state to the db");
-    let _ = std::fs::write("game_state.json", serde_json::to_string(&state).unwrap())
-        .map_err(|e| log::error!("Error saving game state to the db: {}", e));
+    log::debug!("Saving game data to the db");
+    let _ = std::fs::write("games.json", serde_json::to_string(&games).unwrap())
+        .map_err(|e| log::error!("Error saving game data to the db: {}", e));
 
     log::debug!("Exiting...");
 }
