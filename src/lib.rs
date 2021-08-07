@@ -13,6 +13,8 @@ use crossterm::event::KeyCode;
 use once_cell::sync::Lazy;
 use player::{Player, Players};
 use player_field::PlayerField;
+use serde::Deserialize;
+use serde::Serialize;
 use skill::Skill;
 use stats::StatList;
 use status::StatusCooldownType;
@@ -21,8 +23,6 @@ use std::sync::Mutex;
 use term::list_state_ext::ListStateExt;
 use term::{CharacterMenuMode, Term};
 use tui::widgets::ListState;
-use serde::Serialize;
-use serde::Deserialize;
 
 // TODO: that's... not so good. Don't do such stupid things next time, mate
 pub static STAT_LIST: Lazy<Mutex<StatList>> = Lazy::new(|| {
@@ -72,7 +72,8 @@ pub fn run() {
     };
 
     let file_contents = std::fs::read_to_string("game_state.json");
-    if let Ok(json) = file_contents.map_err(|e| log::info!("game_state.json could not be read: {}", e))
+    if let Ok(json) =
+        file_contents.map_err(|e| log::info!("game_state.json could not be read: {}", e))
     {
         match serde_json::from_str(&json) {
             Ok(data) => {
@@ -101,21 +102,35 @@ pub fn run() {
     }
 
     if !state.players.is_empty() && state.order.is_empty() {
-        state.order = state.players
+        state.order = state
+            .players
             .as_vec()
             .iter()
             .map(|(id, _)| *id)
             .collect::<Vec<usize>>();
     }
 
-
     loop {
         match term.draw_main_menu() {
-            MainMenuAction::Play => game_start(&term, &mut state.players, &state.order),
+            MainMenuAction::Play => {
+                if state.players.is_empty() {
+                    term.messagebox(
+                        "Can't start the game with no players. Try again after you add some",
+                    );
+                    continue;
+                }
+                if state.order.is_empty() {
+                    term.messagebox("There are no player in the so-called \"Player Order\". Who's gonna play the game if there is no order of players?");
+                    continue;
+                }
+                game_start(&term, &mut state.players, &state.order);
+            }
             MainMenuAction::Edit => character_menu(&term, &mut state.players),
             MainMenuAction::ReorderPlayers => {
                 if state.players.is_empty() {
-                    term.messagebox("Can't reorder when there are no players. Try again after you add some");
+                    term.messagebox(
+                        "Can't reorder when there are no players. Try again after you add some",
+                    );
                     continue;
                 }
                 state.order = reorder_players(&term, &state.order, &mut state.players)
@@ -431,27 +446,39 @@ fn edit_player(term: &Term, players: &mut Players, id: usize) {
 fn reorder_players(term: &Term, old_player_order: &[usize], players: &mut Players) -> Vec<usize> {
     let mut player_list = old_player_order
         .iter()
-        .map(|&id| (id, players.get(id).unwrap().name.as_str()))
-        .collect::<Vec<(usize, &str)>>();
+        .map(|&id| (id, players.get(id).unwrap().name.clone()))
+        // TODO: mb use Cow?
+        .collect::<Vec<(usize, String)>>();
     log::debug!("Old player order with names: {:#?}", player_list);
     let mut state = ListState::default();
     loop {
-        let name_list = player_list
+        let mut options = player_list
             .iter()
-            .map(|(_, name)| *name)
+            .map(|(_, name)| name.as_str())
             .collect::<Vec<&str>>();
-        match term.messagebox_with_options("Choose which player to move", &name_list, true) {
+        options.push("Reset");
+        match term.messagebox_with_options("Choose which player to move", &options, true) {
             Some(num) => {
+                // Reset is the last option, not an actual player name
+                if num == options.len() - 1 {
+                    player_list = players
+                        .as_vec()
+                        .iter()
+                        .map(|(id, pl)| (*id, pl.upgrade().unwrap().name.clone()))
+                        .collect();
+                    continue;
+                }
                 state.select(Some(num));
                 loop {
+                    // TODO: dedup
                     let name_list = player_list
                         .iter()
-                        .map(|(_, name)| *name)
+                        .map(|(_, name)| name.as_str())
                         .collect::<Vec<&str>>();
                     log::debug!("Moving player #{}", state.selected().unwrap());
                     // TODO: move this inside Term. the controller should be Ui agnostic
                     match term.messagebox_with_options_immediate(
-                        "Use arrows to move the player",
+                        "Use arrows to move the player | D to remove them entirely",
                         &name_list,
                         state.selected(),
                         true,
@@ -474,6 +501,11 @@ fn reorder_players(term: &Term, old_player_order: &[usize], players: &mut Player
                             log::debug!("Old player order in the Vec: {:#?}", player_list);
                             player_list.swap(selected, selected - 1);
                             state.prev(player_list.len());
+                        }
+                        KeyCode::Char('d') => {
+                            let selected = state.selected().unwrap();
+                            player_list.remove(selected);
+                            break;
                         }
                         KeyCode::Enter | KeyCode::Esc => {
                             break;
