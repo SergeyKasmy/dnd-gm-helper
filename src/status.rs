@@ -19,8 +19,9 @@ pub enum StatusType {
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub enum StatusCooldownType {
 	Normal,
-	Attacking,
-	Attacked,
+	OnAttacking,
+	OnGettingAttacked,
+	Manual,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]

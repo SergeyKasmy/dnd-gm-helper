@@ -237,12 +237,16 @@ fn game_start(term: &Term, players: &mut Players, player_order: &[usize]) {
 							get_player_mut!(players, id).add_status(status);
 						}
 					}
-					GameAction::DrainStatusAttacking => {
-						get_player_mut!(players, id).drain_status(StatusCooldownType::Attacking)
+					GameAction::DrainStatus(StatusCooldownType::Normal) => unreachable!(),
+					GameAction::DrainStatus(StatusCooldownType::OnAttacking) => {
+						get_player_mut!(players, id)
+							.drain_status_by_type(StatusCooldownType::OnAttacking)
 					}
-					GameAction::DrainStatusAttacked => {
-						get_player_mut!(players, id).drain_status(StatusCooldownType::Attacked)
+					GameAction::DrainStatus(StatusCooldownType::OnGettingAttacked) => {
+						get_player_mut!(players, id)
+							.drain_status_by_type(StatusCooldownType::OnGettingAttacked)
 					}
+					GameAction::DrainStatus(StatusCooldownType::Manual) => unreachable!(),
 					GameAction::ClearStatuses => get_player_mut!(players, id).statuses.clear(),
 					GameAction::ResetSkillsCD => {
 						log::debug!(

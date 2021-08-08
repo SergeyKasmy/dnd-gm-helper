@@ -1,3 +1,5 @@
+use crate::status::StatusCooldownType;
+
 pub enum MainMenuAction {
 	Play,
 	Edit,
@@ -8,8 +10,7 @@ pub enum MainMenuAction {
 pub enum GameAction {
 	UseSkill,
 	AddStatus,
-	DrainStatusAttacking,
-	DrainStatusAttacked,
+	DrainStatus(StatusCooldownType),
 
 	#[allow(dead_code)]
 	ManageMoney,

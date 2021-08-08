@@ -545,11 +545,22 @@ impl Term {
 						'd' => {
 							match self.messagebox_with_options(
 								"Which statuses to drain?",
-								&["After attacking", "After getting attacked"],
+								&["On attacking", "On getting attacked", "Manual"],
 								true,
 							) {
-								Some(0) => return GameAction::DrainStatusAttacking,
-								Some(1) => return GameAction::DrainStatusAttacked,
+								Some(0) => {
+									return GameAction::DrainStatus(StatusCooldownType::OnAttacking)
+								}
+								Some(1) => {
+									return GameAction::DrainStatus(
+										StatusCooldownType::OnGettingAttacked,
+									)
+								}
+								Some(2) => {
+									return GameAction::DrainStatus(
+										StatusCooldownType::OnGettingAttacked,
+									)
+								}
 								_ => (),
 							}
 						}
@@ -820,13 +831,14 @@ impl Term {
 
 		let status_cooldown_type = match self.messagebox_with_options(
 			"Status cooldown type",
-			&["Normal", "On getting attacked", "On attacking"],
+			&["Normal", "On attacking", "On getting attacked", "Manual"],
 			true,
 		) {
 			Some(num) => match num {
 				0 => StatusCooldownType::Normal,
-				1 => StatusCooldownType::Attacked,
-				2 => StatusCooldownType::Attacking,
+				1 => StatusCooldownType::OnAttacking,
+				2 => StatusCooldownType::OnGettingAttacked,
+				3 => StatusCooldownType::Manual,
 				_ => unreachable!(),
 			},
 			None => return None,
@@ -921,7 +933,6 @@ impl Term {
 
 		for (_, player) in player_pretty_list {
 			log::debug!("Adding player to the player list: {:#?}", player);
-			// TODO: avoid cloning for the 100th time
 			player_list_items.push(ListItem::new(player.name.as_str()));
 		}
 		log::debug!("Player item list vec len is {}", player_list_items.len());

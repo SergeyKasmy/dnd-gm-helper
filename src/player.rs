@@ -39,14 +39,14 @@ impl Player {
 				skill.cooldown_left -= 1
 			}
 		});
-		self.drain_status(StatusCooldownType::Normal);
+		self.drain_status_by_type(StatusCooldownType::Normal);
 	}
 
 	pub fn add_status(&mut self, status: Status) {
 		self.statuses.push(status);
 	}
 
-	pub fn drain_status(&mut self, status_type: StatusCooldownType) {
+	pub fn drain_status_by_type(&mut self, status_type: StatusCooldownType) {
 		log::debug!(
 			"Draining statuses for {} with type {:?}",
 			self.name,
