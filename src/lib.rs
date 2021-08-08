@@ -294,14 +294,9 @@ fn character_menu(term: &Term, players: &mut Players) {
 			.unwrap()
 		{
 			CharacterMenuAction::Add => {
-				let biggest_id = if let Some(num) = players.keys().max() {
-					num + 1
-				} else {
-					0
-				};
-				log::debug!("Adding a new player with id #{}", biggest_id);
-				players.insert(biggest_id, Player::default());
-				edit_player(term, players, biggest_id);
+				let id = players.push(Player::default());
+				log::debug!("Added a new player with id #{}", id);
+				edit_player(term, players, id);
 				// TODO: find out which pos the new player has in the list
 				//last_selected = Some(id);
 				last_selected = None;
@@ -483,6 +478,7 @@ fn reorder_players(term: &Term, old_player_order: &[usize], players: &mut Player
 	let mut state = ListState::default();
 	loop {
 		let mut options: Vec<&str> = player_list.iter().map(|(_, name)| *name).collect();
+		// TODO: add an option to add a removed player without resetting
 		options.push("Reset");
 		match term.messagebox_with_options("Choose which player to move", &options, true) {
 			Some(num) => {

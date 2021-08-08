@@ -703,7 +703,8 @@ impl Term {
 
 		let mut rows_statuses = Vec::new();
 
-		for status in player.statuses.iter() {
+		for &id in player.statuses.sort_ids().iter() {
+			let status = player.statuses.get(id).unwrap();
 			// TODO: implement Display
 			let name = format!("{:?}", status.status_type);
 			rows_statuses.push(Row::new::<[Cell; 2]>([

@@ -29,6 +29,18 @@ pub trait EntityList {
 		self.get_map_mut().get_mut(&id)
 	}
 
+	fn push(&mut self, new_val: Self::Entity) -> usize {
+		self.invalidate_sorted_ids();
+		let biggest_id = if let Some(num) = self.keys().max() {
+			num + 1
+		} else {
+			0
+		};
+
+		self.insert(biggest_id, new_val);
+		biggest_id
+	}
+
 	fn insert(&mut self, id: usize, new_val: Self::Entity) {
 		self.invalidate_sorted_ids();
 		self.get_map_mut().insert(id, new_val);
@@ -37,6 +49,11 @@ pub trait EntityList {
 	fn remove(&mut self, id: usize) -> Option<(usize, Self::Entity)> {
 		self.invalidate_sorted_ids();
 		self.get_map_mut().remove_entry(&id)
+	}
+
+	fn clear(&mut self) {
+		self.invalidate_sorted_ids();
+		self.get_map_mut().clear();
 	}
 
 	fn keys(&self) -> std::collections::hash_map::Keys<usize, Self::Entity> {
