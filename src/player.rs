@@ -5,11 +5,10 @@ use crate::status::StatusCooldownType;
 use crate::term::Term;
 use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, Serializer};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::marker::PhantomData;
-use std::rc::Rc;
-use std::rc::Weak;
 
 pub type Hp = u16;
 
@@ -98,53 +97,38 @@ impl Player {
 
 #[derive(Debug)]
 pub struct Players {
-    map: HashMap<usize, Rc<Player>>,
-    sorted_vec: Option<Vec<(usize, Weak<Player>)>>,
+    map: HashMap<usize, Player>,
+    sorted_ids: RefCell<Option<Vec<usize>>>,
 }
 
 impl Players {
     pub fn new(new_map: HashMap<usize, Player>) -> Players {
         Players {
-            map: new_map
-                .into_iter()
-                .map(|(id, pl)| (id, Rc::new(pl)))
-                .collect(),
-            sorted_vec: None,
+            map: new_map.into_iter().map(|(id, pl)| (id, pl)).collect(),
+            sorted_ids: RefCell::new(None),
         }
     }
 
     pub fn get(&self, id: usize) -> Option<&Player> {
-        let pl = self.map.get(&id);
-        log::debug!(
-            "Player #{} refs: {:?} strong, {:?} weak",
-            id,
-            pl.map(|x| Rc::strong_count(x)),
-            pl.map(|x| Rc::weak_count(x))
-        );
-        pl.map(|x| x.as_ref())
+        self.map.get(&id)
     }
 
     pub fn get_mut(&mut self, id: usize) -> Option<&mut Player> {
-        self.sorted_vec = None;
-        self.map.get_mut(&id).and_then(|x| Rc::get_mut(x))
+        *self.sorted_ids.borrow_mut() = None;
+        self.map.get_mut(&id)
     }
 
     pub fn insert(&mut self, id: usize, new_val: Player) {
-        // invalidate sorted vec
-        self.sorted_vec = None;
-        self.map.insert(id, Rc::new(new_val));
+        *self.sorted_ids.borrow_mut() = None;
+        self.map.insert(id, new_val);
     }
 
     pub fn remove(&mut self, id: usize) -> Option<(usize, Player)> {
-        // invalidate sorted vec
-        self.sorted_vec = None;
-        // TODO: remove this clone
-        self.map
-            .remove_entry(&id)
-            .map(|(id, pl)| (id, (*pl.as_ref()).clone()))
+        *self.sorted_ids.borrow_mut() = None;
+        self.map.remove_entry(&id)
     }
 
-    pub fn keys(&self) -> std::collections::hash_map::Keys<usize, Rc<Player>> {
+    pub fn keys(&self) -> std::collections::hash_map::Keys<usize, Player> {
         self.map.keys()
     }
 
@@ -156,26 +140,25 @@ impl Players {
         self.map.is_empty()
     }
 
-    pub fn as_vec(&mut self) -> &[(usize, Weak<Player>)] {
-        if self.sorted_vec.is_none() {
+    pub fn sorted_ids(&self) -> Vec<usize> {
+        if self.sorted_ids.borrow().is_none() {
             log::debug!("Sorting player list");
-            let mut unsorted_vec = self
-                .map
-                .iter()
-                .map(|(a, b)| (*a, Rc::downgrade(b)))
-                .collect::<Vec<(usize, Weak<Player>)>>();
-            unsorted_vec.sort_by(|a, b| {
-                a.1.upgrade()
-                    .unwrap()
-                    .name
-                    .cmp(&b.1.upgrade().unwrap().name)
+            *self.sorted_ids.borrow_mut() = Some({
+                let mut unsorted: Vec<usize> = self.map.iter().map(|(id, _)| *id).collect();
+                unsorted.sort_by(|a, b| {
+                    self.map
+                        .get(&a)
+                        .unwrap()
+                        .name
+                        .cmp(&self.map.get(&b).unwrap().name)
+                });
+                unsorted
             });
-            self.sorted_vec = Some(unsorted_vec);
         }
-        match &self.sorted_vec {
-            Some(vec) => vec.as_slice(),
+        match &*self.sorted_ids.borrow() {
+            Some(ids) => ids.clone(),
             None => {
-                log::error!("Somehow the sorted vec player list is None even though we should've just created it");
+                log::error!("Somehow the sorted list of player ids is None even though we should've just created it");
                 unreachable!();
             }
         }
@@ -186,7 +169,7 @@ impl Default for Players {
     fn default() -> Self {
         Players {
             map: HashMap::new(),
-            sorted_vec: None,
+            sorted_ids: RefCell::new(None),
         }
     }
 }
@@ -198,7 +181,7 @@ impl Serialize for Players {
     {
         let mut smap = serializer.serialize_map(Some(self.map.len()))?;
         for (id, player) in self.map.iter() {
-            smap.serialize_entry(id, &**player)?;
+            smap.serialize_entry(id, player)?;
         }
         smap.end()
     }

@@ -11,7 +11,6 @@ use crossterm::event::{read as read_event, Event, KeyCode};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{stdout, Stdout};
-use std::rc::Weak;
 use tui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -66,10 +65,12 @@ impl Term {
         selected
     }
 
-    fn get_pretty_player_list(
-        players: &mut Players,
-    ) -> (&[(usize, Weak<Player>)], HashMap<usize, usize>) {
-        let pretty_list = players.as_vec();
+    fn get_pretty_player_list(players: &Players) -> (Vec<(usize, &Player)>, HashMap<usize, usize>) {
+        let pretty_list: Vec<(usize, &Player)> = players
+            .sorted_ids()
+            .iter()
+            .map(|&id| (id, players.get(id).unwrap()))
+            .collect();
         let mut id_map = HashMap::new();
         for (i, (id, _)) in pretty_list.iter().enumerate() {
             id_map.insert(i, *id);
@@ -871,12 +872,8 @@ impl Term {
     pub fn pick_player<'a>(&self, players: &'a mut Players) -> Option<&'a Player> {
         let (player_list, id_map) = Term::get_pretty_player_list(players);
         // TODO: avoid collecting twice
-        let list = player_list
-            .iter()
-            .map(|(_, x)| x.upgrade().unwrap().name.clone())
-            .collect::<Vec<String>>();
-        let list_str = list.iter().map(|x| x.as_str()).collect::<Vec<&str>>();
-        return match self.messagebox_with_options("Pick a player", &list_str, true) {
+        let list: Vec<&str> = player_list.iter().map(|(_, x)| x.name.as_str()).collect();
+        return match self.messagebox_with_options("Pick a player", &list, true) {
             Some(num) => Some(players.get(Term::get_id_from_sel(num, &id_map)).unwrap()),
             None => None,
         };
@@ -927,7 +924,7 @@ impl Term {
         for (_, player) in player_pretty_list {
             log::debug!("Adding player to the player list: {:#?}", player);
             // TODO: avoid cloning for the 100th time
-            player_list_items.push(ListItem::new(player.upgrade().unwrap().name.clone()));
+            player_list_items.push(ListItem::new(player.name.as_str()));
         }
         log::debug!("Player item list vec len is {}", player_list_items.len());
         // selected item by default

@@ -131,12 +131,7 @@ fn start() {
     let mut state = &mut games.get_mut(game_num).unwrap().1;
 
     if !state.players.is_empty() && state.order.is_empty() {
-        state.order = state
-            .players
-            .as_vec()
-            .iter()
-            .map(|(id, _)| *id)
-            .collect::<Vec<usize>>();
+        state.order = state.players.sorted_ids().iter().map(|id| *id).collect();
     }
 
     loop {
@@ -475,37 +470,30 @@ fn edit_player(term: &Term, players: &mut Players, id: usize) {
 }
 
 fn reorder_players(term: &Term, old_player_order: &[usize], players: &mut Players) -> Vec<usize> {
-    let mut player_list = old_player_order
+    let mut player_list: Vec<(usize, &str)> = old_player_order
         .iter()
-        .map(|&id| (id, players.get(id).unwrap().name.clone()))
-        // TODO: mb use Cow?
-        .collect::<Vec<(usize, String)>>();
+        .map(|&id| (id, players.get(id).unwrap().name.as_str()))
+        .collect();
     log::debug!("Old player order with names: {:#?}", player_list);
     let mut state = ListState::default();
     loop {
-        let mut options = player_list
-            .iter()
-            .map(|(_, name)| name.as_str())
-            .collect::<Vec<&str>>();
+        let mut options: Vec<&str> = player_list.iter().map(|(_, name)| *name).collect();
         options.push("Reset");
         match term.messagebox_with_options("Choose which player to move", &options, true) {
             Some(num) => {
                 // Reset is the last option, not an actual player name
                 if num == options.len() - 1 {
                     player_list = players
-                        .as_vec()
+                        .sorted_ids()
                         .iter()
-                        .map(|(id, pl)| (*id, pl.upgrade().unwrap().name.clone()))
+                        .map(|&id| (id, players.get(id).unwrap().name.as_str()))
                         .collect();
                     continue;
                 }
                 state.select(Some(num));
                 loop {
                     // TODO: dedup
-                    let name_list = player_list
-                        .iter()
-                        .map(|(_, name)| name.as_str())
-                        .collect::<Vec<&str>>();
+                    let name_list: Vec<&str> = player_list.iter().map(|(_, name)| *name).collect();
                     log::debug!("Moving player #{}", state.selected().unwrap());
                     // TODO: move this inside Term. the controller should be Ui agnostic
                     match term.messagebox_with_options_immediate(
