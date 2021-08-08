@@ -1,4 +1,5 @@
 pub mod action_enums;
+mod entity_list;
 mod player;
 pub mod player_field;
 mod skill;
@@ -8,6 +9,7 @@ mod term;
 
 use action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use crossterm::event::KeyCode;
+use entity_list::EntityList;
 use once_cell::sync::Lazy;
 use player::{Player, Players};
 use player_field::PlayerField;
@@ -131,7 +133,7 @@ fn start() {
 	let mut state = &mut games.get_mut(game_num).unwrap().1;
 
 	if !state.players.is_empty() && state.order.is_empty() {
-		state.order = state.players.sorted_ids().iter().map(|id| *id).collect();
+		state.order = state.players.sort_ids().iter().map(|id| *id).collect();
 	}
 
 	loop {
@@ -487,7 +489,7 @@ fn reorder_players(term: &Term, old_player_order: &[usize], players: &mut Player
 				// Reset is the last option, not an actual player name
 				if num == options.len() - 1 {
 					player_list = players
-						.sorted_ids()
+						.sort_ids()
 						.iter()
 						.map(|&id| (id, players.get(id).unwrap().name.as_str()))
 						.collect();

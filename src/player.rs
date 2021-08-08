@@ -1,3 +1,4 @@
+use crate::entity_list::EntityList;
 use crate::skill::Skill;
 use crate::stats::Stats;
 use crate::status::Status;
@@ -101,6 +102,7 @@ pub struct Players {
 	sorted_ids: RefCell<Option<Vec<usize>>>,
 }
 
+/*
 impl Players {
 	pub fn new(new_map: HashMap<usize, Player>) -> Players {
 		Players {
@@ -162,6 +164,54 @@ impl Players {
 				unreachable!();
 			}
 		}
+	}
+}
+*/
+
+impl EntityList for Players {
+	type Entity = Player;
+
+	fn new(map: HashMap<usize, Self::Entity>) -> Self {
+		Self {
+			map,
+			sorted_ids: RefCell::new(None),
+		}
+	}
+
+	fn get_map(&self) -> &HashMap<usize, Self::Entity> {
+		&self.map
+	}
+
+	fn get_map_mut(&mut self) -> &mut HashMap<usize, Self::Entity> {
+		&mut self.map
+	}
+
+	fn sort_ids(&self) -> Vec<usize> {
+		if self.sorted_ids.borrow().is_none() {
+			log::debug!("Sorting player list");
+			*self.sorted_ids.borrow_mut() = Some({
+				let mut unsorted: Vec<usize> = self.map.iter().map(|(id, _)| *id).collect();
+				unsorted.sort_by(|a, b| {
+					self.map
+						.get(&a)
+						.unwrap()
+						.name
+						.cmp(&self.map.get(&b).unwrap().name)
+				});
+				unsorted
+			});
+		}
+		match &*self.sorted_ids.borrow() {
+			Some(ids) => ids.clone(),
+			None => {
+				log::error!("Somehow the sorted list of player ids is None even though we should've just created it");
+				unreachable!();
+			}
+		}
+	}
+
+	fn invalidate_sorted_ids(&self) {
+		*self.sorted_ids.borrow_mut() = None;
 	}
 }
 

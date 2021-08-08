@@ -1,6 +1,7 @@
 pub mod list_state_ext;
 
 use crate::action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
+use crate::entity_list::EntityList;
 use crate::player::{Player, Players};
 use crate::player_field::PlayerField;
 use crate::skill::Skill;
@@ -67,7 +68,7 @@ impl Term {
 
 	fn get_pretty_player_list(players: &Players) -> (Vec<(usize, &Player)>, HashMap<usize, usize>) {
 		let pretty_list: Vec<(usize, &Player)> = players
-			.sorted_ids()
+			.sort_ids()
 			.iter()
 			.map(|&id| (id, players.get(id).unwrap()))
 			.collect();
