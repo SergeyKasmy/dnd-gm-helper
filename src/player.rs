@@ -7,6 +7,7 @@ use crate::status::Statuses;
 use crate::term::Term;
 use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, Serializer};
+use crate::id::Uid;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
@@ -91,33 +92,33 @@ impl Player {
 
 #[derive(Debug)]
 pub struct Players {
-	map: HashMap<usize, Player>,
-	sorted_ids: RefCell<Option<Vec<usize>>>,
+	map: HashMap<Uid, Player>,
+	sorted_ids: RefCell<Option<Vec<Uid>>>,
 }
 
 impl EntityList for Players {
 	type Entity = Player;
 
-	fn new(map: HashMap<usize, Self::Entity>) -> Self {
+	fn new(map: HashMap<Uid, Self::Entity>) -> Self {
 		Self {
 			map,
 			sorted_ids: RefCell::new(None),
 		}
 	}
 
-	fn get_map(&self) -> &HashMap<usize, Self::Entity> {
+	fn get_map(&self) -> &HashMap<Uid, Self::Entity> {
 		&self.map
 	}
 
-	fn get_map_mut(&mut self) -> &mut HashMap<usize, Self::Entity> {
+	fn get_map_mut(&mut self) -> &mut HashMap<Uid, Self::Entity> {
 		&mut self.map
 	}
 
-	fn sort_ids(&self) -> Vec<usize> {
+	fn sort_ids(&self) -> Vec<Uid> {
 		if self.sorted_ids.borrow().is_none() {
 			log::debug!("Sorting player list");
 			*self.sorted_ids.borrow_mut() = Some({
-				let mut unsorted: Vec<usize> = self.map.iter().map(|(id, _)| *id).collect();
+				let mut unsorted: Vec<Uid> = self.map.iter().map(|(id, _)| *id).collect();
 				unsorted.sort_by(|a, b| {
 					self.map
 						.get(&a)
@@ -181,7 +182,7 @@ impl<'de> Visitor<'de> for PlayersVisitor {
 	type Value = Players;
 
 	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		formatter.write_str("StatList.map<usize, String>")
+		formatter.write_str("Players.map<Uid, String>")
 	}
 
 	fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>

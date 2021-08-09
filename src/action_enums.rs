@@ -1,4 +1,5 @@
 use crate::status::StatusCooldownType;
+use crate::id::{OrderNum, Uid};
 
 pub enum MainMenuAction {
 	Play,
@@ -24,12 +25,12 @@ pub enum GameAction {
 
 pub enum CharacterMenuAction {
 	Add,
-	Edit(usize),
+	Edit(Uid),
 	Editing {
 		buffer: String,
 		field_offset: Option<i8>,
 	},
 	DoneEditing,
-	Delete(usize),
+	Delete(Uid),
 	Quit,
 }

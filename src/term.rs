@@ -1,5 +1,6 @@
 pub mod list_state_ext;
 
+use crate::id::{Uid, OrderNum};
 use crate::action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use crate::entity_list::EntityList;
 use crate::player::{Player, Players};
@@ -26,10 +27,10 @@ use std::convert::TryFrom;
 #[derive(Copy, Clone)]
 pub enum CharacterMenuMode {
 	View {
-		selected: Option<usize>,
+		selected: Option<Uid>,
 	},
 	Edit {
-		selected: usize,
+		selected: Uid,
 		selected_field: PlayerField,
 	},
 }
@@ -51,30 +52,15 @@ impl Term {
 		}
 	}
 
-	fn get_id_from_sel(selected: usize, map: &HashMap<usize, usize>) -> usize {
-		let id = *map.get(&selected).unwrap();
-		log::debug!("Got id #{} of selected item #{}", id, selected);
-		id
-	}
-
-	fn get_sel_from_id(id: usize, map: &HashMap<usize, usize>) -> usize {
-		let selected = *map
-			.iter()
-			.find_map(|(key, &val)| if val == id { Some(key) } else { None })
-			.unwrap();
-		log::debug!("Got selected item #{} from id #{}", selected, id);
-		selected
-	}
-
-	fn get_pretty_player_list(players: &Players) -> (Vec<(usize, &Player)>, HashMap<usize, usize>) {
-		let pretty_list: Vec<(usize, &Player)> = players
+	fn get_pretty_player_list(players: &Players) -> (Vec<(Uid, &Player)>, HashMap<OrderNum, Uid>) {
+		let pretty_list: Vec<(Uid, &Player)> = players
 			.sort_ids()
 			.iter()
 			.map(|&id| (id, players.get(id).unwrap()))
 			.collect();
-		let mut id_map = HashMap::new();
+		let mut id_map: HashMap<OrderNum, Uid> = HashMap::new();
 		for (i, (id, _)) in pretty_list.iter().enumerate() {
-			id_map.insert(i, *id);
+			id_map.insert(i.into(), *id);
 		}
 
 		(pretty_list, id_map)
@@ -172,7 +158,7 @@ impl Term {
 		&self,
 		desc: &str,
 		options: &[&str],
-		selected: Option<usize>,
+		selected: Option<OrderNum>,
 		is_vertical: bool,
 	) -> KeyCode {
 		self.term.borrow_mut().clear().unwrap();
@@ -214,7 +200,7 @@ impl Term {
 		};
 
 		let mut state = ListState::default();
-		state.select(selected);
+		state.select_onum(selected);
 		loop {
 			self.term
 				.borrow_mut()
@@ -306,21 +292,21 @@ impl Term {
 		desc: &str,
 		options: &[&str],
 		is_vertical: bool,
-	) -> Option<usize> {
+	) -> Option<OrderNum> {
 		let mut state = ListState::default();
 		state.select(Some(0));
 		loop {
 			match self.messagebox_with_options_immediate(
 				desc,
 				options,
-				state.selected(),
+				state.selected_onum(),
 				is_vertical,
 			) {
-				KeyCode::Enter => return Some(state.selected().unwrap_or(0)),
+				KeyCode::Enter => return Some(state.selected_onum().unwrap_or(0.into())),
 				KeyCode::Char(ch) => {
 					if let Some(num) = ch.to_digit(10) {
-						let num = num as usize - 1;
-						if num < options.len() {
+						let num: OrderNum = (num as usize - 1).into();
+						if num < options.len().into() {
 							return Some(num);
 						}
 					}
@@ -384,7 +370,7 @@ impl Term {
 	pub fn messagebox_yn(&self, desc: &str) -> bool {
 		matches!(
 			self.messagebox_with_options(desc, &["Yes", "No"], false),
-			Some(0)
+			Some(OrderNum(0))
 		)
 	}
 
@@ -549,15 +535,15 @@ impl Term {
 								&["On attacking", "On getting attacked", "Manual"],
 								true,
 							) {
-								Some(0) => {
+								Some(OrderNum(0)) => {
 									return GameAction::DrainStatus(StatusCooldownType::OnAttacking)
 								}
-								Some(1) => {
+								Some(OrderNum(1)) => {
 									return GameAction::DrainStatus(
 										StatusCooldownType::OnGettingAttacked,
 									)
 								}
-								Some(2) => {
+								Some(OrderNum(2)) => {
 									return GameAction::DrainStatus(
 										StatusCooldownType::OnGettingAttacked,
 									)
@@ -584,7 +570,7 @@ impl Term {
 
 	fn player_stats<'a>(
 		player: &'a Player,
-		player_id: Option<usize>,
+		player_id: Option<Uid>,
 		rect: Rect,
 		selected: Option<PlayerField>,
 		selected_str: Option<&'a str>,
@@ -786,7 +772,7 @@ impl Term {
 		stats
 	}
 
-	pub fn choose_skill(&self, skills: &[Skill]) -> Option<u32> {
+	pub fn choose_skill(&self, skills: &[Skill]) -> Option<OrderNum> {
 		self.messagebox_with_options(
 			"Select skill",
 			skills
@@ -796,7 +782,6 @@ impl Term {
 				.as_slice(),
 			true,
 		)
-		.map(|x| x as u32)
 	}
 
 	pub fn choose_status(&self) -> Option<Status> {
@@ -815,7 +800,7 @@ impl Term {
 
 		let status_type = match self.messagebox_with_options("Choose a status", &status_list, true)
 		{
-			Some(num) => match num {
+			Some(num) => match *num {
 				0 => StatusType::Discharge,
 				1 => StatusType::FireAttack,
 				2 => StatusType::FireShield,
@@ -836,7 +821,7 @@ impl Term {
 			&["Normal", "On attacking", "On getting attacked", "Manual"],
 			true,
 		) {
-			Some(num) => match num {
+			Some(num) => match *num {
 				0 => StatusCooldownType::Normal,
 				1 => StatusCooldownType::OnAttacking,
 				2 => StatusCooldownType::OnGettingAttacked,
@@ -886,7 +871,7 @@ impl Term {
 		// TODO: avoid collecting twice
 		let list: Vec<&str> = player_list.iter().map(|(_, x)| x.name.as_str()).collect();
 		return match self.messagebox_with_options("Pick a player", &list, true) {
-			Some(num) => Some(players.get(Term::get_id_from_sel(num, &id_map)).unwrap()),
+			Some(num) => Some(players.get(num.to_uid(&id_map).unwrap()).unwrap()),
 			None => None,
 		};
 	}
@@ -939,20 +924,20 @@ impl Term {
 		}
 		log::debug!("Player item list vec len is {}", player_list_items.len());
 		// selected item by default
-		player_list_state.select(match mode {
+		player_list_state.select_onum(match mode {
 			CharacterMenuMode::View { selected } => {
 				if let Some(id) = selected {
-					Some(Term::get_sel_from_id(id, &player_list_id_map))
+                    Some(id.to_order_num(&player_list_id_map).unwrap())
 				// if none is selected, select the first one if the list isn't empty
 				} else if !players.is_empty() {
-					Some(0)
+					Some(0.into())
 				} else {
 					// and don't select any if it is
 					None
 				}
 			}
 			CharacterMenuMode::Edit { selected, .. } => {
-				Some(Term::get_sel_from_id(selected, &player_list_id_map))
+                Some(selected.to_order_num(&player_list_id_map).unwrap())
 			}
 		});
 		log::debug!(
@@ -1012,7 +997,7 @@ impl Term {
 
 					frame.render_stateful_widget(player_list, tables[0], &mut player_list_state);
 
-					if let Some(num) = player_list_state.selected() {
+					if let Some(num) = player_list_state.selected_onum() {
 						log::debug!("#{} is selected", num);
 						let selected_field =
 							if let CharacterMenuMode::Edit { selected_field, .. } = mode {
@@ -1020,7 +1005,7 @@ impl Term {
 							} else {
 								None
 							};
-						let id = Term::get_id_from_sel(num, &player_list_id_map);
+						let id = num.to_uid(&player_list_id_map).unwrap();
 						let selected_player = players.get(id).unwrap();
 						log::debug!("Got player #{}: {:#?}", id, selected_player);
 						let mut player_stats = Term::player_stats(
@@ -1043,17 +1028,14 @@ impl Term {
 						KeyCode::Char(ch) => match ch {
 							'a' => return Some(CharacterMenuAction::Add),
 							'e' => {
-								if let Some(i) = player_list_state.selected() {
-									return Some(CharacterMenuAction::Edit(Term::get_id_from_sel(
-										i,
-										&player_list_id_map,
-									)));
+								if let Some(i) = player_list_state.selected_onum() {
+									return Some(CharacterMenuAction::Edit(i.to_uid(&player_list_id_map).unwrap()));
 								}
 							}
 							'd' => {
-								if let Some(i) = player_list_state.selected() {
+								if let Some(i) = player_list_state.selected_onum() {
 									return Some(CharacterMenuAction::Delete(
-										Term::get_id_from_sel(i, &player_list_id_map),
+                                        i.to_uid(&player_list_id_map).unwrap(),
 									));
 								}
 							}

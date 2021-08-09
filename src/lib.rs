@@ -1,12 +1,16 @@
-pub mod action_enums;
+//pub mod action_enums;
+mod action_enums;
 mod entity_list;
 mod player;
-pub mod player_field;
+//pub mod player_field;
+mod player_field;
 mod skill;
 mod stats;
 mod status;
 mod term;
+mod id;
 
+use id::{OrderNum, Uid};
 use action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use crossterm::event::KeyCode;
 use entity_list::EntityList;
@@ -39,7 +43,7 @@ pub static STAT_LIST: Lazy<Mutex<StatList>> = Lazy::new(|| {
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct GameState {
 	players: Players,
-	order: Vec<usize>,
+	order: Vec<Uid>,
 }
 
 macro_rules! get_player {
@@ -118,7 +122,7 @@ fn start() {
 		loop {
 			match term.messagebox_with_options("Choose the game", &options, true) {
 				Some(num) => {
-					if num >= games.len() {
+					if num >= games.len().into() {
 						let name =
 							term.messagebox_with_input_field("Enter the name of the new game");
 						games.push((name, GameState::default()));
@@ -130,7 +134,7 @@ fn start() {
 		}
 	};
 
-	let mut state = &mut games.get_mut(game_num).unwrap().1;
+	let mut state = &mut games.get_mut(*game_num).unwrap().1;
 
 	if !state.players.is_empty() && state.order.is_empty() {
 		state.order = state.players.sort_ids().iter().map(|id| *id).collect();
@@ -172,7 +176,7 @@ fn start() {
 	log::debug!("Exiting...");
 }
 
-fn game_start(term: &Term, players: &mut Players, player_order: &[usize]) {
+fn game_start(term: &Term, players: &mut Players, player_order: &[Uid]) {
 	log::debug!("In the game menu...");
 	enum NextPlayerState {
 		Default,
@@ -212,11 +216,11 @@ fn game_start(term: &Term, players: &mut Players, player_order: &[usize]) {
 						log::debug!("Choosing a skill to use");
 						loop {
 							let input = match term.choose_skill(skills) {
-								Some(num) => num as usize,
+								Some(num) => num,
 								None => return,
 							};
 							log::debug!("Chose skill #{}", input);
-							match skills.get_mut(input) {
+							match skills.get_mut(*input) {
 								Some(skill) => {
 									if skill.r#use().is_err() {
 										term.messagebox("Skill still on cooldown");
@@ -282,7 +286,7 @@ fn game_start(term: &Term, players: &mut Players, player_order: &[usize]) {
 
 fn character_menu(term: &Term, players: &mut Players) {
 	log::debug!("In the character menu...");
-	let mut last_selected = None;
+	let mut last_selected: Option<Uid> = None;
 	loop {
 		match term
 			.draw_character_menu(
@@ -332,7 +336,7 @@ fn character_menu(term: &Term, players: &mut Players) {
 	log::debug!("Exiting the character menu...");
 }
 
-fn edit_player(term: &Term, players: &mut Players, id: usize) {
+fn edit_player(term: &Term, players: &mut Players, id: Uid) {
 	log::debug!("Editing player #{}", id);
 	let mut selected_field = PlayerField::Name; // TODO: maybe use something like new()?
 	loop {
@@ -469,8 +473,8 @@ fn edit_player(term: &Term, players: &mut Players, id: usize) {
 	log::debug!("Exiting out of the character menu...");
 }
 
-fn reorder_players(term: &Term, old_player_order: &[usize], players: &mut Players) -> Vec<usize> {
-	let mut player_list: Vec<(usize, &str)> = old_player_order
+fn reorder_players(term: &Term, old_player_order: &[Uid], players: &mut Players) -> Vec<Uid> {
+	let mut player_list: Vec<(Uid, &str)> = old_player_order
 		.iter()
 		.map(|&id| (id, players.get(id).unwrap().name.as_str()))
 		.collect();
@@ -483,7 +487,7 @@ fn reorder_players(term: &Term, old_player_order: &[usize], players: &mut Player
 		match term.messagebox_with_options("Choose which player to move", &options, true) {
 			Some(num) => {
 				// Reset is the last option, not an actual player name
-				if num == options.len() - 1 {
+				if num == (options.len() - 1).into() {
 					player_list = players
 						.sort_ids()
 						.iter()
@@ -491,7 +495,7 @@ fn reorder_players(term: &Term, old_player_order: &[usize], players: &mut Player
 						.collect();
 					continue;
 				}
-				state.select(Some(num));
+				state.select_onum(Some(num));
 				loop {
 					// TODO: dedup
 					let name_list: Vec<&str> = player_list.iter().map(|(_, name)| *name).collect();
@@ -500,7 +504,7 @@ fn reorder_players(term: &Term, old_player_order: &[usize], players: &mut Player
 					match term.messagebox_with_options_immediate(
 						"Use arrows to move the player | D to remove them entirely",
 						&name_list,
-						state.selected(),
+						state.selected_onum(),
 						true,
 					) {
 						// TODO: add more checks for unwrap()

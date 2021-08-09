@@ -1,3 +1,4 @@
+use crate::id::Uid;
 use crate::entity_list::EntityList;
 use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, Serializer};
@@ -45,8 +46,8 @@ pub struct Status {
 
 #[derive(Clone, Debug)]
 pub struct Statuses {
-	map: HashMap<usize, Status>,
-	sorted_ids: RefCell<Option<Vec<usize>>>,
+	map: HashMap<Uid, Status>,
+	sorted_ids: RefCell<Option<Vec<Uid>>>,
 }
 
 impl Statuses {
@@ -67,26 +68,26 @@ impl Statuses {
 impl EntityList for Statuses {
 	type Entity = Status;
 
-	fn new(map: HashMap<usize, Self::Entity>) -> Self {
+	fn new(map: HashMap<Uid, Self::Entity>) -> Self {
 		Self {
 			map,
 			sorted_ids: RefCell::new(None),
 		}
 	}
 
-	fn get_map(&self) -> &HashMap<usize, Self::Entity> {
+	fn get_map(&self) -> &HashMap<Uid, Self::Entity> {
 		&self.map
 	}
 
-	fn get_map_mut(&mut self) -> &mut HashMap<usize, Self::Entity> {
+	fn get_map_mut(&mut self) -> &mut HashMap<Uid, Self::Entity> {
 		&mut self.map
 	}
 
-	fn sort_ids(&self) -> Vec<usize> {
+	fn sort_ids(&self) -> Vec<Uid> {
 		if self.sorted_ids.borrow().is_none() {
 			log::debug!("Sorting player list");
 			*self.sorted_ids.borrow_mut() = Some({
-				let mut unsorted: Vec<usize> = self.map.iter().map(|(id, _)| *id).collect();
+				let mut unsorted: Vec<Uid> = self.map.iter().map(|(id, _)| *id).collect();
 				unsorted.sort_by(|a, b| {
 					self.map
 						.get(&a)
