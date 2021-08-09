@@ -1,23 +1,8 @@
 use crate::STAT_LIST;
-use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
-use serde::ser::{Serialize, SerializeMap, Serializer};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt;
-use std::marker::PhantomData;
 
-/*
-#[derive(Copy, Clone, PartialEq, Debug)]
-pub enum StatType {
-	Strength,
-	Dexterity,
-	Poise,
-	Wisdom,
-	Intelligence,
-	Charisma,
-}
-*/
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StatList {
 	map: HashMap<usize, String>,
 	// TODO: maybe keep a sorted vec inside for faster access to ui stuff
@@ -53,116 +38,9 @@ impl StatList {
 	}
 }
 
-impl Serialize for StatList {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: Serializer,
-	{
-		let mut smap = serializer.serialize_map(Some(self.map.len()))?;
-		for (id, name) in self.map.iter() {
-			smap.serialize_entry(id, name)?;
-		}
-		smap.end()
-	}
-}
-
-struct StatListVisitor {
-	marker: PhantomData<fn() -> StatList>,
-}
-
-impl StatListVisitor {
-	fn new() -> Self {
-		StatListVisitor {
-			marker: PhantomData,
-		}
-	}
-}
-
-impl<'de> Visitor<'de> for StatListVisitor {
-	type Value = StatList;
-
-	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		formatter.write_str("StatList.map<usize, String>")
-	}
-
-	fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
-	where
-		M: MapAccess<'de>,
-	{
-		let mut stat_list = StatList {
-			map: HashMap::with_capacity(access.size_hint().unwrap_or(0)),
-		};
-
-		while let Some((id, name)) = access.next_entry()? {
-			stat_list.map.insert(id, name);
-		}
-
-		Ok(stat_list)
-	}
-}
-
-impl<'de> Deserialize<'de> for StatList {
-	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-		deserializer.deserialize_map(StatListVisitor::new())
-	}
-}
-
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct Stats {
-	// TODO: mb use a &str instead
 	map: HashMap<usize, i32>,
-}
-
-impl Serialize for Stats {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: Serializer,
-	{
-		let mut smap = serializer.serialize_map(Some(self.map.len()))?;
-		for (id, name) in self.map.iter() {
-			smap.serialize_entry(id, name)?;
-		}
-		smap.end()
-	}
-}
-
-struct StatsVisitor {
-	marker: PhantomData<fn() -> Stats>,
-}
-
-impl StatsVisitor {
-	fn new() -> Self {
-		StatsVisitor {
-			marker: PhantomData,
-		}
-	}
-}
-
-impl<'de> Visitor<'de> for StatsVisitor {
-	type Value = Stats;
-
-	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		formatter.write_str("Stats.map<usize, i32>")
-	}
-
-	fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
-	where
-		M: MapAccess<'de>,
-	{
-		let mut map = HashMap::with_capacity(access.size_hint().unwrap_or(0));
-
-		while let Some((id, val)) = access.next_entry()? {
-			map.insert(id, val);
-		}
-
-		Ok(Stats::new(map))
-	}
-}
-
-impl<'de> Deserialize<'de> for Stats {
-	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-		deserializer.deserialize_map(StatsVisitor::new())
-	}
 }
 
 impl Stats {

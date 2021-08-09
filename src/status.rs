@@ -1,14 +1,12 @@
 use crate::entity_list::EntityList;
 use crate::id::Uid;
-use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
-use serde::ser::{Serialize, SerializeMap, Serializer};
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
-use std::marker::PhantomData;
 
 // TODO: use HashMap
-#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum StatusType {
 	Discharge,
 	FireAttack,
@@ -29,7 +27,7 @@ impl fmt::Display for StatusType {
 	}
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub enum StatusCooldownType {
 	Normal,
 	OnAttacking,
@@ -37,14 +35,14 @@ pub enum StatusCooldownType {
 	Manual,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Status {
 	pub status_type: StatusType,
 	pub status_cooldown_type: StatusCooldownType,
 	pub duration: u32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Statuses {
 	map: HashMap<Uid, Status>,
 	sorted_ids: RefCell<Option<Vec<Uid>>>,
@@ -127,57 +125,5 @@ impl EntityList for Statuses {
 impl Default for Statuses {
 	fn default() -> Self {
 		Self::new(HashMap::new())
-	}
-}
-
-impl Serialize for Statuses {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: Serializer,
-	{
-		let mut smap = serializer.serialize_map(Some(self.map.len()))?;
-		for (id, player) in self.map.iter() {
-			smap.serialize_entry(id, player)?;
-		}
-		smap.end()
-	}
-}
-
-struct StatusesVisitor {
-	marker: PhantomData<fn() -> Statuses>,
-}
-
-impl StatusesVisitor {
-	fn new() -> Self {
-		StatusesVisitor {
-			marker: PhantomData,
-		}
-	}
-}
-
-impl<'de> Visitor<'de> for StatusesVisitor {
-	type Value = Statuses;
-
-	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		formatter.write_str("StatList.map<usize, String>")
-	}
-
-	fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
-	where
-		M: MapAccess<'de>,
-	{
-		let mut map = HashMap::with_capacity(access.size_hint().unwrap_or(0));
-
-		while let Some((id, pl)) = access.next_entry()? {
-			map.insert(id, pl);
-		}
-
-		Ok(Statuses::new(map))
-	}
-}
-
-impl<'de> Deserialize<'de> for Statuses {
-	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-		deserializer.deserialize_map(StatusesVisitor::new())
 	}
 }

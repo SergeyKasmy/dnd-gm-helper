@@ -6,12 +6,9 @@ use crate::status::Status;
 use crate::status::StatusCooldownType;
 use crate::status::Statuses;
 use crate::term::Term;
-use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
-use serde::ser::{Serialize, SerializeMap, Serializer};
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt;
-use std::marker::PhantomData;
 
 pub type Hp = u16;
 
@@ -20,7 +17,7 @@ pub enum PlayerState {
 	Dead,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Default, Debug)]
+#[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct Player {
 	// permanent state
 	pub name: String,
@@ -90,7 +87,7 @@ impl Player {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Players {
 	map: HashMap<Uid, Player>,
 	sorted_ids: RefCell<Option<Vec<Uid>>>,
@@ -150,57 +147,5 @@ impl Default for Players {
 			map: HashMap::new(),
 			sorted_ids: RefCell::new(None),
 		}
-	}
-}
-
-impl Serialize for Players {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: Serializer,
-	{
-		let mut smap = serializer.serialize_map(Some(self.map.len()))?;
-		for (id, player) in self.map.iter() {
-			smap.serialize_entry(id, player)?;
-		}
-		smap.end()
-	}
-}
-
-struct PlayersVisitor {
-	marker: PhantomData<fn() -> Players>,
-}
-
-impl PlayersVisitor {
-	fn new() -> Self {
-		PlayersVisitor {
-			marker: PhantomData,
-		}
-	}
-}
-
-impl<'de> Visitor<'de> for PlayersVisitor {
-	type Value = Players;
-
-	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		formatter.write_str("Players.map<Uid, String>")
-	}
-
-	fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
-	where
-		M: MapAccess<'de>,
-	{
-		let mut map = HashMap::with_capacity(access.size_hint().unwrap_or(0));
-
-		while let Some((id, pl)) = access.next_entry()? {
-			map.insert(id, pl);
-		}
-
-		Ok(Players::new(map))
-	}
-}
-
-impl<'de> Deserialize<'de> for Players {
-	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-		deserializer.deserialize_map(PlayersVisitor::new())
 	}
 }
