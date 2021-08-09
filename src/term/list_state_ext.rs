@@ -1,11 +1,11 @@
-use tui::widgets::ListState;
 use crate::id::OrderNum;
+use tui::widgets::ListState;
 
 pub trait ListStateExt {
 	fn next(&mut self, len: usize) -> Option<usize>;
 	fn prev(&mut self, len: usize) -> Option<usize>;
-    fn selected_onum(&self) -> Option<OrderNum>;
-    fn select_onum(&mut self, num: Option<OrderNum>);
+	fn selected_onum(&self) -> Option<OrderNum>;
+	fn select_onum(&mut self, num: Option<OrderNum>);
 }
 
 impl ListStateExt for ListState {
@@ -43,11 +43,11 @@ impl ListStateExt for ListState {
 		prev_num
 	}
 
-    fn selected_onum(&self) -> Option<OrderNum> {
-        self.selected().map(Into::into)
-    }
+	fn selected_onum(&self) -> Option<OrderNum> {
+		self.selected().map(Into::into)
+	}
 
-    fn select_onum(&mut self, num: Option<OrderNum>) {
-        self.select(num.map(|x| *x))
-    }
+	fn select_onum(&mut self, num: Option<OrderNum>) {
+		self.select(num.map(|x| *x))
+	}
 }

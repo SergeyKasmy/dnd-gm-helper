@@ -1,5 +1,5 @@
-use crate::status::StatusCooldownType;
 use crate::id::{OrderNum, Uid};
+use crate::status::StatusCooldownType;
 
 pub enum MainMenuAction {
 	Play,

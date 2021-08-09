@@ -1,5 +1,5 @@
-use crate::id::Uid;
 use crate::entity_list::EntityList;
+use crate::id::Uid;
 use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use std::cell::RefCell;
@@ -61,6 +61,17 @@ impl Statuses {
 			}
 		});
 		// remove all statuses that have run out = retain all statuses that haven't yet run out
+		self.map.retain(|_, status| status.duration > 0);
+	}
+
+	// TODO: combine with the one from the above
+	pub fn drain_by_id(&mut self, id: Uid) {
+		let curr = self.get_mut(id).unwrap();
+		if curr.duration > 0 {
+			log::debug!("Drained {:?}, uid {}", curr.status_type, id);
+			curr.duration -= 1;
+		}
+
 		self.map.retain(|_, status| status.duration > 0);
 	}
 }

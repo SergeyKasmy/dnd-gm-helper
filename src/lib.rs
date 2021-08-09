@@ -3,17 +3,17 @@ mod action_enums;
 mod entity_list;
 mod player;
 //pub mod player_field;
+mod id;
 mod player_field;
 mod skill;
 mod stats;
 mod status;
 mod term;
-mod id;
 
-use id::{OrderNum, Uid};
 use action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use crossterm::event::KeyCode;
 use entity_list::EntityList;
+use id::Uid;
 use once_cell::sync::Lazy;
 use player::{Player, Players};
 use player_field::PlayerField;
@@ -252,7 +252,43 @@ fn game_start(term: &Term, players: &mut Players, player_order: &[Uid]) {
 						get_player_mut!(players, id)
 							.drain_status_by_type(StatusCooldownType::OnGettingAttacked)
 					}
-					GameAction::DrainStatus(StatusCooldownType::Manual) => unreachable!(),
+					GameAction::DrainStatus(StatusCooldownType::Manual) => {
+						log::debug!("Choosing which manual status to drain");
+						let statuses = &get_player!(players, id).statuses;
+						let manual_statuses = statuses
+							.sort_ids()
+							.iter()
+							.filter_map(|x| {
+								if get_player!(players, id)
+									.statuses
+									.get(*x)
+									.unwrap()
+									.status_cooldown_type == StatusCooldownType::Manual
+								{
+									Some(*x)
+								} else {
+									None
+								}
+							})
+							.collect::<Vec<Uid>>();
+						let manual_statuses_list = manual_statuses
+							.iter()
+							.map(|&x| {
+								format!(
+									"{:?}, {} left",
+									statuses.get(x).unwrap().status_type,
+									statuses.get(x).unwrap().duration
+								)
+							})
+							.collect::<Vec<String>>();
+						if let Some(num) =
+							term.messagebox_with_options("Pick status", &manual_statuses_list, true)
+						{
+							get_player_mut!(players, id)
+								.statuses
+								.drain_by_id(*manual_statuses.get(*num).unwrap());
+						}
+					}
 					GameAction::ClearStatuses => get_player_mut!(players, id).statuses.clear(),
 					GameAction::ResetSkillsCD => {
 						log::debug!(

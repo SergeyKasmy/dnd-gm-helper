@@ -1,8 +1,8 @@
 pub mod list_state_ext;
 
-use crate::id::{Uid, OrderNum};
 use crate::action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use crate::entity_list::EntityList;
+use crate::id::{OrderNum, Uid};
 use crate::player::{Player, Players};
 use crate::player_field::PlayerField;
 use crate::skill::Skill;
@@ -154,10 +154,10 @@ impl Term {
 		)
 	}
 
-	pub fn messagebox_with_options_immediate(
+	pub fn messagebox_with_options_immediate<T: AsRef<str>>(
 		&self,
 		desc: &str,
-		options: &[&str],
+		options: &[T],
 		selected: Option<OrderNum>,
 		is_vertical: bool,
 	) -> KeyCode {
@@ -172,12 +172,12 @@ impl Term {
 					// add all button text together
 					options
 						.iter()
-						.map(|item| item.chars().count() as u16)
+						.map(|item| item.as_ref().chars().count() as u16)
 						.sum::<u16>() + 4
 				} else {
 					// find the longest button text
 					options.iter().fold(0, |acc, item| {
-						let len = item.chars().count();
+						let len = item.as_ref().chars().count();
 						if len > acc {
 							len
 						} else {
@@ -221,7 +221,7 @@ impl Term {
 								let mut tmp = buttons_rect.width;
 								tmp -= options
 									.iter()
-									.map(|item| item.chars().count() as u16)
+									.map(|item| item.as_ref().chars().count() as u16)
 									.sum::<u16>();
 								// if more than out button, substract spacing between them
 								if options.len() > 1 {
@@ -244,13 +244,13 @@ impl Term {
 								Style::default()
 							};
 
-							let button = Paragraph::new(*option).style(button_style);
+							let button = Paragraph::new(option.as_ref()).style(button_style);
 
 							let rect = {
 								let mut tmp = buttons_rect;
-								tmp.width = option.chars().count() as u16;
+								tmp.width = option.as_ref().chars().count() as u16;
 								if i > 0 {
-									tmp.x += options[i - 1].len() as u16;
+									tmp.x += options[i - 1].as_ref().len() as u16;
 									tmp.x += OFFSET_BETWEEN_BUTTONS;
 								}
 
@@ -264,7 +264,7 @@ impl Term {
 							let rect = {
 								let mut tmp = buttons_rect;
 								tmp.y += i as u16;
-								tmp.width = option.chars().count() as u16;
+								tmp.width = option.as_ref().chars().count() as u16;
 								tmp
 							};
 
@@ -274,7 +274,7 @@ impl Term {
 								Style::default()
 							};
 
-							let button = Paragraph::new(*option).style(button_style);
+							let button = Paragraph::new(option.as_ref()).style(button_style);
 							frame.render_widget(button, rect);
 						}
 					}
@@ -287,10 +287,10 @@ impl Term {
 		}
 	}
 
-	pub fn messagebox_with_options(
+	pub fn messagebox_with_options<T: AsRef<str>>(
 		&self,
 		desc: &str,
-		options: &[&str],
+		options: &[T],
 		is_vertical: bool,
 	) -> Option<OrderNum> {
 		let mut state = ListState::default();
@@ -544,9 +544,7 @@ impl Term {
 									)
 								}
 								Some(OrderNum(2)) => {
-									return GameAction::DrainStatus(
-										StatusCooldownType::OnGettingAttacked,
-									)
+									return GameAction::DrainStatus(StatusCooldownType::Manual)
 								}
 								_ => (),
 							}
@@ -927,7 +925,7 @@ impl Term {
 		player_list_state.select_onum(match mode {
 			CharacterMenuMode::View { selected } => {
 				if let Some(id) = selected {
-                    Some(id.to_order_num(&player_list_id_map).unwrap())
+					Some(id.to_order_num(&player_list_id_map).unwrap())
 				// if none is selected, select the first one if the list isn't empty
 				} else if !players.is_empty() {
 					Some(0.into())
@@ -937,7 +935,7 @@ impl Term {
 				}
 			}
 			CharacterMenuMode::Edit { selected, .. } => {
-                Some(selected.to_order_num(&player_list_id_map).unwrap())
+				Some(selected.to_order_num(&player_list_id_map).unwrap())
 			}
 		});
 		log::debug!(
@@ -1029,13 +1027,15 @@ impl Term {
 							'a' => return Some(CharacterMenuAction::Add),
 							'e' => {
 								if let Some(i) = player_list_state.selected_onum() {
-									return Some(CharacterMenuAction::Edit(i.to_uid(&player_list_id_map).unwrap()));
+									return Some(CharacterMenuAction::Edit(
+										i.to_uid(&player_list_id_map).unwrap(),
+									));
 								}
 							}
 							'd' => {
 								if let Some(i) = player_list_state.selected_onum() {
 									return Some(CharacterMenuAction::Delete(
-                                        i.to_uid(&player_list_id_map).unwrap(),
+										i.to_uid(&player_list_id_map).unwrap(),
 									));
 								}
 							}

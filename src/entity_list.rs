@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::id::Uid;
+use std::collections::HashMap;
 
 pub trait EntityList {
 	type Entity;

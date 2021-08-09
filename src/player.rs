@@ -1,4 +1,5 @@
 use crate::entity_list::EntityList;
+use crate::id::Uid;
 use crate::skill::Skill;
 use crate::stats::Stats;
 use crate::status::Status;
@@ -7,7 +8,6 @@ use crate::status::Statuses;
 use crate::term::Term;
 use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, Serializer};
-use crate::id::Uid;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
