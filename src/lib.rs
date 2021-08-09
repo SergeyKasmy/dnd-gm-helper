@@ -22,6 +22,7 @@ use serde::Serialize;
 use skill::Skill;
 use stats::StatList;
 use status::StatusCooldownType;
+use status::StatusList;
 use std::collections::HashMap;
 use term::list_state_ext::ListStateExt;
 use term::{CharacterMenuMode, Term};
@@ -39,6 +40,7 @@ struct GameState {
 	players: Players,
 	order: Vec<Uid>,
 	stat_list: StatList,
+	status_list: StatusList,
 }
 
 macro_rules! get_player {
@@ -140,14 +142,29 @@ fn start() -> Result<()> {
 
 	// TODO: unhardcode these
 	state.stat_list = {
-		let mut stats = HashMap::new();
-		stats.insert(Uid(0), "Strength".to_string());
-		stats.insert(Uid(1), "Dexterity".to_string());
-		stats.insert(Uid(2), "Poise".to_string());
-		stats.insert(Uid(3), "Wisdom".to_string());
-		stats.insert(Uid(4), "Intelligence".to_string());
-		stats.insert(Uid(5), "Charisma".to_string());
-		StatList::new(stats)
+		let mut map = HashMap::new();
+		map.insert(Uid(0), "Strength".to_string());
+		map.insert(Uid(1), "Dexterity".to_string());
+		map.insert(Uid(2), "Poise".to_string());
+		map.insert(Uid(3), "Wisdom".to_string());
+		map.insert(Uid(4), "Intelligence".to_string());
+		map.insert(Uid(5), "Charisma".to_string());
+		StatList::new(map)
+	};
+
+	state.status_list = {
+		let mut map = HashMap::new();
+		map.insert(Uid(0), "Discharge".to_string());
+		map.insert(Uid(1), "Fire Attack".to_string());
+		map.insert(Uid(2), "Fire Shield".to_string());
+		map.insert(Uid(3), "Ice Shield".to_string());
+		map.insert(Uid(4), "Blizzard".to_string());
+		map.insert(Uid(5), "Fusion".to_string());
+		map.insert(Uid(6), "Luck".to_string());
+		map.insert(Uid(7), "Knockdown".to_string());
+		map.insert(Uid(8), "Poison".to_string());
+		map.insert(Uid(9), "Stun".to_string());
+		StatusList::new(map)
 	};
 
 	if !state.players.is_empty() && state.order.is_empty() {
@@ -167,9 +184,20 @@ fn start() -> Result<()> {
 					term.messagebox("There are no player in the so-called \"Player Order\". Who's gonna play the game if there is no order of players?")?;
 					continue;
 				}
-				game_start(&term, &mut state.players, &state.order, &state.stat_list)?;
+				game_start(
+					&term,
+					&mut state.players,
+					&state.order,
+					&state.stat_list,
+					&state.status_list,
+				)?;
 			}
-			MainMenuAction::Edit => character_menu(&term, &mut state.players, &state.stat_list)?,
+			MainMenuAction::Edit => character_menu(
+				&term,
+				&mut state.players,
+				&state.stat_list,
+				&state.status_list,
+			)?,
 			MainMenuAction::ReorderPlayers => {
 				if state.players.is_empty() {
 					term.messagebox(
@@ -198,6 +226,7 @@ fn game_start(
 	players: &mut Players,
 	player_order: &[Uid],
 	stat_list: &StatList,
+	status_list: &StatusList,
 ) -> Result<()> {
 	log::debug!("In the game menu...");
 	enum NextPlayerState {
@@ -228,7 +257,7 @@ fn game_start(
 			}
 			log::debug!("Current turn: {} #{}", get_player!(players, id).name, id);
 			loop {
-				match term.draw_game(get_player!(players, id), stat_list)? {
+				match term.draw_game(get_player!(players, id), stat_list, status_list)? {
 					// TODO: combine lesser used options into a menu
 					// TODO: use skills on others -> adds status
 					// TODO: rename "Drain status" to "Got hit"/"Hit mob"
@@ -254,11 +283,11 @@ fn game_start(
 						}
 					}
 					GameAction::AddStatus => {
-						if let Some(status) = term.choose_status()? {
+						if let Some(status) = term.choose_status(status_list)? {
 							log::debug!(
 								"Adding status {:?} for {}, type: {:?}",
 								status.status_type,
-								status.duration,
+								status.duration_left,
 								status.status_cooldown_type
 							);
 
@@ -298,7 +327,7 @@ fn game_start(
 								format!(
 									"{:?}, {} left",
 									statuses.get(x).unwrap().status_type,
-									statuses.get(x).unwrap().duration
+									statuses.get(x).unwrap().duration_left
 								)
 							})
 							.collect::<Vec<String>>();
@@ -349,7 +378,12 @@ fn game_start(
 	Ok(())
 }
 
-fn character_menu(term: &Term, players: &mut Players, stat_list: &StatList) -> Result<()> {
+fn character_menu(
+	term: &Term,
+	players: &mut Players,
+	stat_list: &StatList,
+	status_list: &StatusList,
+) -> Result<()> {
 	log::debug!("In the character menu...");
 	let mut last_selected: Option<Uid> = None;
 	loop {
@@ -359,18 +393,19 @@ fn character_menu(term: &Term, players: &mut Players, stat_list: &StatList) -> R
 			},
 			players,
 			stat_list,
+			status_list,
 		)? {
 			CharacterMenuAction::Add => {
 				let id = players.push(Player::default());
 				log::debug!("Added a new player with id #{}", id);
-				edit_player(term, players, id, stat_list)?;
+				edit_player(term, players, id, stat_list, status_list)?;
 				// TODO: find out which pos the new player has in the list
 				//last_selected = Some(id);
 				last_selected = None;
 			}
 			CharacterMenuAction::Edit(num) => {
 				log::debug!("Editing player #{}", num);
-				edit_player(term, players, num, stat_list)?;
+				edit_player(term, players, num, stat_list, status_list)?;
 				last_selected = Some(num);
 			}
 			// TODO: remove skills
@@ -400,7 +435,13 @@ fn character_menu(term: &Term, players: &mut Players, stat_list: &StatList) -> R
 	Ok(())
 }
 
-fn edit_player(term: &Term, players: &mut Players, id: Uid, stat_list: &StatList) -> Result<()> {
+fn edit_player(
+	term: &Term,
+	players: &mut Players,
+	id: Uid,
+	stat_list: &StatList,
+	status_list: &StatusList,
+) -> Result<()> {
 	log::debug!("Editing player #{}", id);
 	let mut selected_field = PlayerField::Name; // TODO: maybe use something like new()?
 	loop {
@@ -423,6 +464,7 @@ fn edit_player(term: &Term, players: &mut Players, id: Uid, stat_list: &StatList
 			},
 			players,
 			stat_list,
+			status_list,
 		)? {
 			CharacterMenuAction::Editing {
 				buffer,

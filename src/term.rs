@@ -7,7 +7,7 @@ use crate::player::{Player, Players};
 use crate::player_field::PlayerField;
 use crate::skill::Skill;
 use crate::stats::StatList;
-use crate::status::{Status, StatusCooldownType, StatusType};
+use crate::status::{Status, StatusCooldownType, StatusList};
 use crate::term::list_state_ext::ListStateExt;
 use anyhow::anyhow;
 use anyhow::Result;
@@ -459,13 +459,25 @@ impl Term {
 		}
 	}
 
-	pub fn draw_game(&self, player: &Player, stat_list: &StatList) -> Result<GameAction> {
+	pub fn draw_game(
+		&self,
+		player: &Player,
+		stat_list: &StatList,
+		status_list: &StatusList,
+	) -> Result<GameAction> {
 		loop {
 			self.term.borrow_mut().draw(|frame| {
 				let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
 
-				let mut player_stats =
-					Term::player_stats(player, stat_list, None, window_rect, None, None);
+				let mut player_stats = Term::player_stats(
+					player,
+					stat_list,
+					status_list,
+					window_rect,
+					None,
+					None,
+					None,
+				);
 				while let Some((table, table_rect)) = player_stats.pop() {
 					frame.render_widget(table, table_rect);
 				}
@@ -561,8 +573,9 @@ impl Term {
 	fn player_stats<'a>(
 		player: &'a Player,
 		stat_list: &StatList,
-		player_id: Option<Uid>,
+		status_list: &StatusList,
 		rect: Rect,
+		player_id: Option<Uid>,
 		selected: Option<PlayerField>,
 		selected_str: Option<&'a str>,
 	) -> Vec<(Table<'a>, Rect)> {
@@ -684,12 +697,12 @@ impl Term {
 		for &id in player.statuses.sort_ids().iter() {
 			let status = player.statuses.get(id).unwrap();
 			// TODO: implement Display
-			let name = format!("{:?}", status.status_type);
+			let name = format!("{}", status_list.get(status.status_type).unwrap());
 			rows_statuses.push(Row::new::<[Cell; 2]>([
 				name.into(),
 				format!(
 					"{} turns left ({:?})",
-					status.duration, status.status_cooldown_type
+					status.duration_left, status.status_cooldown_type
 				)
 				.into(),
 			]));
@@ -776,35 +789,15 @@ impl Term {
 		)
 	}
 
-	pub fn choose_status(&self) -> Result<Option<Status>> {
-		let status_list = [
-			"#1 Discharge",
-			"#2 Fire Attack",
-			"#3 Fire Shield",
-			"#4 Ice Shield",
-			"#5 Blizzard",
-			"#6 Fusion",
-			"#7 Luck",
-			"#8 Knockdown",
-			"#9 Poison",
-			"#0 Stun",
-		];
-
+	pub fn choose_status(&self, status_list: &StatusList) -> Result<Option<Status>> {
+		let status_list_names = status_list
+			.sort_ids()
+			.iter()
+			.map(|x| status_list.get(*x).unwrap())
+			.collect::<Vec<&String>>();
 		let status_type =
-			match self.messagebox_with_options("Choose a status", &status_list, true)? {
-				Some(num) => match *num {
-					0 => StatusType::Discharge,
-					1 => StatusType::FireAttack,
-					2 => StatusType::FireShield,
-					3 => StatusType::IceShield,
-					4 => StatusType::Blizzard,
-					5 => StatusType::Fusion,
-					6 => StatusType::Luck,
-					7 => StatusType::Knockdown,
-					8 => StatusType::Poison,
-					9 => StatusType::Stun,
-					_ => unreachable!(),
-				},
+			match self.messagebox_with_options("Choose a status", &status_list_names, true)? {
+				Some(num) => Uid(*num),
 				None => return Ok(None),
 			};
 
@@ -823,7 +816,7 @@ impl Term {
 			None => return Ok(None),
 		};
 
-		let duration = loop {
+		let duration_left = loop {
 			match self
 				.messagebox_with_input_field("Status duration")?
 				.parse::<u32>()
@@ -836,7 +829,7 @@ impl Term {
 		Ok(Some(Status {
 			status_type,
 			status_cooldown_type,
-			duration,
+			duration_left,
 		}))
 	}
 
@@ -875,6 +868,7 @@ impl Term {
 		mode: CharacterMenuMode,
 		players: &mut Players,
 		stat_list: &StatList,
+		status_list: &StatusList,
 	) -> Result<CharacterMenuAction> {
 		fn validate_input(input: &str, field: PlayerField) -> bool {
 			match field {
@@ -1004,8 +998,9 @@ impl Term {
 					let mut player_stats = Term::player_stats(
 						selected_player,
 						stat_list,
-						Some(id),
+						status_list,
 						tables[1],
+						Some(id),
 						selected_field,
 						add_mode_buffer.as_deref(),
 					);
