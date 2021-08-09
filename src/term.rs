@@ -6,9 +6,10 @@ use crate::id::{OrderNum, Uid};
 use crate::player::{Player, Players};
 use crate::player_field::PlayerField;
 use crate::skill::Skill;
+use crate::stats::StatList;
 use crate::status::{Status, StatusCooldownType, StatusType};
 use crate::term::list_state_ext::ListStateExt;
-use crate::STAT_LIST;
+use anyhow::anyhow;
 use anyhow::Result;
 use crossterm::event::{read as read_event, Event, KeyCode};
 use std::cell::RefCell;
@@ -458,12 +459,13 @@ impl Term {
 		}
 	}
 
-	pub fn draw_game(&self, player: &Player) -> Result<GameAction> {
+	pub fn draw_game(&self, player: &Player, stat_list: &StatList) -> Result<GameAction> {
 		loop {
 			self.term.borrow_mut().draw(|frame| {
 				let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
 
-				let mut player_stats = Term::player_stats(player, None, window_rect, None, None);
+				let mut player_stats =
+					Term::player_stats(player, stat_list, None, window_rect, None, None);
 				while let Some((table, table_rect)) = player_stats.pop() {
 					frame.render_widget(table, table_rect);
 				}
@@ -558,6 +560,7 @@ impl Term {
 
 	fn player_stats<'a>(
 		player: &'a Player,
+		stat_list: &StatList,
 		player_id: Option<Uid>,
 		rect: Rect,
 		selected: Option<PlayerField>,
@@ -589,38 +592,39 @@ impl Term {
 
 		let mut rows_stats = Vec::new();
 		{
-			// TODO: using a Mutex was a bad idea...
-			let stat_list = STAT_LIST.lock().unwrap();
-			for (i, (&stat, stat_name)) in stat_list.as_vec().iter().enumerate() {
+			for (i, &stat_id) in stat_list.sort_ids().iter().enumerate() {
 				// TODO: avoid to_string()'ing everything
 				// TODO: make this actually readable and easy to understand
 				let (style, stat_text) = match (selected, selected_str) {
 					(Some(selected), Some(string)) => {
 						if let PlayerField::Stat(selected) = selected {
-							if selected == i {
+							if *selected == i {
 								(selected_style, string.to_string())
 							} else {
-								(Style::default(), player.stats.get(stat).to_string())
+								(Style::default(), player.stats.get(stat_id).to_string())
 							}
 						} else {
-							(Style::default(), player.stats.get(stat).to_string())
+							(Style::default(), player.stats.get(stat_id).to_string())
 						}
 					}
 					(_, _) => {
 						if let Some(PlayerField::Stat(selected)) = selected {
-							if selected == i {
-								(selected_style, player.stats.get(stat).to_string())
+							if *selected == i {
+								(selected_style, player.stats.get(stat_id).to_string())
 							} else {
-								(Style::default(), player.stats.get(stat).to_string())
+								(Style::default(), player.stats.get(stat_id).to_string())
 							}
 						} else {
-							(Style::default(), player.stats.get(stat).to_string())
+							(Style::default(), player.stats.get(stat_id).to_string())
 						}
 					}
 				};
 				rows_stats.push(
-					Row::new::<[Cell; 2]>([stat_name.to_string().into(), stat_text.into()])
-						.style(style),
+					Row::new::<[Cell; 2]>([
+						stat_list.get(stat_id).unwrap().to_string().into(),
+						stat_text.into(),
+					])
+					.style(style),
 				);
 			}
 		}
@@ -633,7 +637,7 @@ impl Term {
 			let mut name_style = None;
 			let name: String;
 			if let Some(PlayerField::SkillName(curr_skill_num)) = selected {
-				if curr_skill_num == i {
+				if *curr_skill_num == i {
 					name = if let Some(selected_str) = selected_str {
 						selected_str.into()
 					} else {
@@ -651,7 +655,7 @@ impl Term {
 			let mut cd_style = None;
 			let cd: String;
 			if let Some(PlayerField::SkillCD(curr_skill_num)) = selected {
-				if curr_skill_num == i {
+				if *curr_skill_num == i {
 					cd = if let Some(selected_str) = selected_str {
 						selected_str.into()
 					} else {
@@ -870,6 +874,7 @@ impl Term {
 		&self,
 		mode: CharacterMenuMode,
 		players: &mut Players,
+		stat_list: &StatList,
 	) -> Result<CharacterMenuAction> {
 		fn validate_input(input: &str, field: PlayerField) -> bool {
 			match field {
@@ -888,15 +893,17 @@ impl Term {
 			let player = players.get(selected).unwrap();
 			Some(match selected_field {
 				PlayerField::Name => player.name.clone(),
-				PlayerField::Stat(i) => {
-					// TODO: maybe do this conversion somewhere else?
-					let stat_list = STAT_LIST.lock().unwrap();
-					let vec = stat_list.as_vec();
-					let id = *vec.get(i).unwrap().0;
-					player.stats.get(id).to_string()
-				}
-				PlayerField::SkillName(i) => player.skills[i].name.clone(),
-				PlayerField::SkillCD(i) => player.skills[i].cooldown.to_string(),
+				PlayerField::Stat(i) => player
+					.stats
+					.get(
+						*stat_list
+							.sort_ids()
+							.get(*i)
+							.ok_or(anyhow!("Can't get Uid of stat {:?}", i))?,
+					)
+					.to_string(),
+				PlayerField::SkillName(i) => player.skills[*i].name.clone(),
+				PlayerField::SkillCD(i) => player.skills[*i].cooldown.to_string(),
 			})
 		} else {
 			None
@@ -996,6 +1003,7 @@ impl Term {
 					log::debug!("Got player #{}: {:#?}", id, selected_player);
 					let mut player_stats = Term::player_stats(
 						selected_player,
+						stat_list,
 						Some(id),
 						tables[1],
 						selected_field,

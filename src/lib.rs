@@ -15,7 +15,6 @@ use action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
 use crossterm::event::KeyCode;
 use entity_list::EntityList;
 use id::Uid;
-use once_cell::sync::Lazy;
 use player::{Player, Players};
 use player_field::PlayerField;
 use serde::Deserialize;
@@ -24,27 +23,22 @@ use skill::Skill;
 use stats::StatList;
 use status::StatusCooldownType;
 use std::collections::HashMap;
-use std::sync::Mutex;
 use term::list_state_ext::ListStateExt;
 use term::{CharacterMenuMode, Term};
 use tui::widgets::ListState;
 
-// TODO: that's... not so good. Don't do such stupid things next time, mate
+/*
 pub static STAT_LIST: Lazy<Mutex<StatList>> = Lazy::new(|| {
 	let mut stats: HashMap<usize, String> = HashMap::new();
-	stats.insert(0, "Strength".to_string());
-	stats.insert(1, "Dexterity".to_string());
-	stats.insert(2, "Poise".to_string());
-	stats.insert(3, "Wisdom".to_string());
-	stats.insert(4, "Intelligence".to_string());
-	stats.insert(5, "Charisma".to_string());
 	Mutex::new(StatList::new(stats))
 });
+*/
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct GameState {
 	players: Players,
 	order: Vec<Uid>,
+	stat_list: StatList,
 }
 
 macro_rules! get_player {
@@ -144,6 +138,18 @@ fn start() -> Result<()> {
 		.ok_or(anyhow::Error::msg("Game not found"))?
 		.1;
 
+	// TODO: unhardcode these
+	state.stat_list = {
+		let mut stats = HashMap::new();
+		stats.insert(Uid(0), "Strength".to_string());
+		stats.insert(Uid(1), "Dexterity".to_string());
+		stats.insert(Uid(2), "Poise".to_string());
+		stats.insert(Uid(3), "Wisdom".to_string());
+		stats.insert(Uid(4), "Intelligence".to_string());
+		stats.insert(Uid(5), "Charisma".to_string());
+		StatList::new(stats)
+	};
+
 	if !state.players.is_empty() && state.order.is_empty() {
 		state.order = state.players.sort_ids().iter().map(|id| *id).collect();
 	}
@@ -161,9 +167,9 @@ fn start() -> Result<()> {
 					term.messagebox("There are no player in the so-called \"Player Order\". Who's gonna play the game if there is no order of players?")?;
 					continue;
 				}
-				game_start(&term, &mut state.players, &state.order)?;
+				game_start(&term, &mut state.players, &state.order, &state.stat_list)?;
 			}
-			MainMenuAction::Edit => character_menu(&term, &mut state.players)?,
+			MainMenuAction::Edit => character_menu(&term, &mut state.players, &state.stat_list)?,
 			MainMenuAction::ReorderPlayers => {
 				if state.players.is_empty() {
 					term.messagebox(
@@ -187,7 +193,12 @@ fn start() -> Result<()> {
 	Ok(())
 }
 
-fn game_start(term: &Term, players: &mut Players, player_order: &[Uid]) -> Result<()> {
+fn game_start(
+	term: &Term,
+	players: &mut Players,
+	player_order: &[Uid],
+	stat_list: &StatList,
+) -> Result<()> {
 	log::debug!("In the game menu...");
 	enum NextPlayerState {
 		Default,
@@ -217,7 +228,7 @@ fn game_start(term: &Term, players: &mut Players, player_order: &[Uid]) -> Resul
 			}
 			log::debug!("Current turn: {} #{}", get_player!(players, id).name, id);
 			loop {
-				match term.draw_game(get_player!(players, id))? {
+				match term.draw_game(get_player!(players, id), stat_list)? {
 					// TODO: combine lesser used options into a menu
 					// TODO: use skills on others -> adds status
 					// TODO: rename "Drain status" to "Got hit"/"Hit mob"
@@ -338,7 +349,7 @@ fn game_start(term: &Term, players: &mut Players, player_order: &[Uid]) -> Resul
 	Ok(())
 }
 
-fn character_menu(term: &Term, players: &mut Players) -> Result<()> {
+fn character_menu(term: &Term, players: &mut Players, stat_list: &StatList) -> Result<()> {
 	log::debug!("In the character menu...");
 	let mut last_selected: Option<Uid> = None;
 	loop {
@@ -347,18 +358,19 @@ fn character_menu(term: &Term, players: &mut Players) -> Result<()> {
 				selected: last_selected,
 			},
 			players,
+			stat_list,
 		)? {
 			CharacterMenuAction::Add => {
 				let id = players.push(Player::default());
 				log::debug!("Added a new player with id #{}", id);
-				edit_player(term, players, id)?;
+				edit_player(term, players, id, stat_list)?;
 				// TODO: find out which pos the new player has in the list
 				//last_selected = Some(id);
 				last_selected = None;
 			}
 			CharacterMenuAction::Edit(num) => {
 				log::debug!("Editing player #{}", num);
-				edit_player(term, players, num)?;
+				edit_player(term, players, num, stat_list)?;
 				last_selected = Some(num);
 			}
 			// TODO: remove skills
@@ -388,7 +400,7 @@ fn character_menu(term: &Term, players: &mut Players) -> Result<()> {
 	Ok(())
 }
 
-fn edit_player(term: &Term, players: &mut Players, id: Uid) -> Result<()> {
+fn edit_player(term: &Term, players: &mut Players, id: Uid, stat_list: &StatList) -> Result<()> {
 	log::debug!("Editing player #{}", id);
 	let mut selected_field = PlayerField::Name; // TODO: maybe use something like new()?
 	loop {
@@ -396,7 +408,7 @@ fn edit_player(term: &Term, players: &mut Players, id: Uid) -> Result<()> {
 		match selected_field {
 			PlayerField::SkillName(skill_id) | PlayerField::SkillCD(skill_id) => {
 				let player = get_player_mut!(players, id);
-				if player.skills.get(skill_id).is_none() {
+				if player.skills.get(*skill_id).is_none() {
 					log::debug!("Going to modify a skill but it doesn't yet exist. Creating...");
 					player.skills.push(Skill::default())
 				}
@@ -410,6 +422,7 @@ fn edit_player(term: &Term, players: &mut Players, id: Uid) -> Result<()> {
 				selected_field,
 			},
 			players,
+			stat_list,
 		)? {
 			CharacterMenuAction::Editing {
 				buffer,
@@ -429,21 +442,15 @@ fn edit_player(term: &Term, players: &mut Players, id: Uid) -> Result<()> {
 
 							// TODO: modify inplace
 							selected_field = match field_offset.unwrap_or(1) {
-								1 => selected_field.next(),
-								-1 => selected_field.prev(),
+								1 => selected_field.next(stat_list),
+								-1 => selected_field.prev(stat_list),
 								_ => selected_field,
 							}
 						}
 					}
 					// TODO: maybe try to integrate stat id together with selected id in the enum?
 					PlayerField::Stat(selected) => {
-						let stat_id = {
-							let stat_list = STAT_LIST.lock().unwrap();
-							let vec = stat_list.as_vec();
-							*vec.get(selected)
-								.ok_or(anyhow::Error::msg("Player not found"))?
-								.0
-						};
+						let stat_id = *stat_list.sort_ids().get(*selected).unwrap();
 
 						if let Ok(buffer) = buffer
 							.parse::<i32>()
@@ -461,14 +468,14 @@ fn edit_player(term: &Term, players: &mut Players, id: Uid) -> Result<()> {
 							);
 							player.stats.set(stat_id, buffer);
 							selected_field = match field_offset.unwrap_or(1) {
-								1 => selected_field.next(),
-								-1 => selected_field.prev(),
+								1 => selected_field.next(stat_list),
+								-1 => selected_field.prev(stat_list),
 								_ => selected_field,
 							}
 						}
 					}
 					PlayerField::SkillName(skill_id) => {
-						let skill_name = &mut player.skills[skill_id].name;
+						let skill_name = &mut player.skills[*skill_id].name;
 						log::debug!(
 							"Changing player #{}'s skill #{}'s name: from {} to {}",
 							id,
@@ -478,8 +485,8 @@ fn edit_player(term: &Term, players: &mut Players, id: Uid) -> Result<()> {
 						);
 						let _ = std::mem::replace(skill_name, buffer);
 						selected_field = match field_offset.unwrap_or(1) {
-							1 => selected_field.next(),
-							-1 => selected_field.prev(),
+							1 => selected_field.next(stat_list),
+							-1 => selected_field.prev(stat_list),
 							_ => selected_field,
 						}
 					}
@@ -487,7 +494,7 @@ fn edit_player(term: &Term, players: &mut Players, id: Uid) -> Result<()> {
 						if let Ok(buffer) = buffer.parse::<u32>().map_err(|e| {
 							log::error!("Error parsing new skill #{} CD value: {}", skill_id, e)
 						}) {
-							let skill_cd = &mut player.skills[skill_id].cooldown;
+							let skill_cd = &mut player.skills[*skill_id].cooldown;
 							log::debug!(
 								"Changing player #{}'s skill #{}'s CD: from {} to {}",
 								id,
@@ -495,11 +502,11 @@ fn edit_player(term: &Term, players: &mut Players, id: Uid) -> Result<()> {
 								skill_cd,
 								buffer
 							);
-							player.skills[skill_id].cooldown = buffer;
+							player.skills[*skill_id].cooldown = buffer;
 						}
 						selected_field = match field_offset.unwrap_or(1) {
-							1 => selected_field.next(),
-							-1 => selected_field.prev(),
+							1 => selected_field.next(stat_list),
+							-1 => selected_field.prev(stat_list),
 							_ => selected_field,
 						}
 					}

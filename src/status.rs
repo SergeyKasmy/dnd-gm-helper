@@ -45,7 +45,10 @@ pub struct Status {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Statuses {
+	#[serde(flatten)]
 	map: HashMap<Uid, Status>,
+
+	#[serde(skip)]
 	sorted_ids: RefCell<Option<Vec<Uid>>>,
 }
 
@@ -98,7 +101,7 @@ impl EntityList for Statuses {
 
 	fn sort_ids(&self) -> Vec<Uid> {
 		if self.sorted_ids.borrow().is_none() {
-			log::debug!("Sorting player list");
+			log::debug!("Sorting status list");
 			*self.sorted_ids.borrow_mut() = Some({
 				let mut unsorted: Vec<Uid> = self.map.iter().map(|(id, _)| *id).collect();
 				unsorted.sort_by(|a, b| {

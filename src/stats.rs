@@ -1,55 +1,83 @@
-use crate::STAT_LIST;
+use crate::entity_list::EntityList;
+use crate::id::Uid;
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::collections::HashMap;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct StatList {
-	map: HashMap<usize, String>,
-	// TODO: maybe keep a sorted vec inside for faster access to ui stuff
-	// and selection -> id convertion
+	#[serde(flatten)]
+	map: HashMap<Uid, String>,
+
+	#[serde(skip)]
+	sorted_ids: RefCell<Option<Vec<Uid>>>,
 }
 
 impl StatList {
-	pub fn new(map: HashMap<usize, String>) -> Self {
-		StatList { map }
-	}
-
-	pub fn len(&self) -> usize {
-		self.map.len()
-	}
-
-	pub fn get_name(&self, id: usize) -> Option<&str> {
+	pub fn get_name(&self, id: Uid) -> Option<&str> {
 		Some(self.map.get(&id)?.as_str())
 	}
 
-	pub fn contains(&self, id: usize) -> bool {
+	pub fn contains(&self, id: Uid) -> bool {
 		self.map.contains_key(&id)
 	}
+}
 
-	pub fn as_vec(&self) -> Vec<(&usize, &str)> {
-		let mut vec = self
-			.map
-			.iter()
-			.map(|(id, name)| (id, name.as_str()))
-			.collect::<Vec<(&usize, &str)>>();
-		vec.sort_by(|a, b| a.1.cmp(b.1));
-		vec
+impl EntityList for StatList {
+	type Entity = String;
+
+	fn new(map: HashMap<Uid, Self::Entity>) -> Self {
+		Self {
+			map,
+			sorted_ids: RefCell::new(None),
+		}
+	}
+
+	fn get_map(&self) -> &HashMap<Uid, Self::Entity> {
+		&self.map
+	}
+
+	fn get_map_mut(&mut self) -> &mut HashMap<Uid, Self::Entity> {
+		&mut self.map
+	}
+
+	fn sort_ids(&self) -> Vec<Uid> {
+		if self.sorted_ids.borrow().is_none() {
+			log::debug!("Sorting stat list");
+			*self.sorted_ids.borrow_mut() = Some({
+				let mut unsorted: Vec<Uid> = self.map.iter().map(|(id, _)| *id).collect();
+				unsorted.sort_by(|a, b| self.map.get(&a).unwrap().cmp(&self.map.get(&b).unwrap()));
+				unsorted
+			});
+		}
+		match &*self.sorted_ids.borrow() {
+			Some(ids) => ids.clone(),
+			None => {
+				log::error!("Somehow the sorted list of status ids is None even though we should've just created it");
+				unreachable!();
+			}
+		}
+	}
+
+	fn invalidate_sorted_ids(&self) {
+		*self.sorted_ids.borrow_mut() = None;
 	}
 }
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct Stats {
-	map: HashMap<usize, i32>,
+	#[serde(flatten)]
+	map: HashMap<Uid, i32>,
 }
 
 impl Stats {
-	pub fn new(mut map: HashMap<usize, i32>) -> Stats {
+	pub fn new(mut map: HashMap<Uid, i32>, stat_list: &StatList) -> Stats {
 		// ignore all stats that's id doesn't exist
-		map.retain(|&id, _| STAT_LIST.lock().unwrap().contains(id));
+		map.retain(|&id, _| stat_list.contains(id));
 		Stats { map }
 	}
 
-	pub fn get(&self, id: usize) -> i32 {
+	pub fn get(&self, id: Uid) -> i32 {
 		*self.map.get(&id).unwrap_or(&0)
 	}
 
@@ -64,7 +92,7 @@ impl Stats {
 	}
 	*/
 
-	pub fn set(&mut self, id: usize, new_val: i32) {
+	pub fn set(&mut self, id: Uid, new_val: i32) {
 		if new_val == 0 {
 			self.map.remove(&id);
 		} else {

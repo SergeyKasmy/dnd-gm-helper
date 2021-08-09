@@ -89,7 +89,10 @@ impl Player {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Players {
+	#[serde(flatten)]
 	map: HashMap<Uid, Player>,
+
+	#[serde(skip)]
 	sorted_ids: RefCell<Option<Vec<Uid>>>,
 }
 
