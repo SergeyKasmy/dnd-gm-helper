@@ -1,3 +1,4 @@
+use anyhow::Result;
 //pub mod action_enums;
 mod action_enums;
 mod entity_list;
@@ -50,8 +51,10 @@ macro_rules! get_player {
 	($players:ident, $i:expr) => {
 		$players
 			.get($i)
-			.ok_or(())
-			.map_err(|_| log::error!("{} is not a valid id", $i))
+			.ok_or(anyhow::Error::msg("Player not found"))
+			// TODO: remove double errors
+			.map_err(|e| log::error!("{} is not a valid id: {}", $i, e))
+			// TODO: do something about the unwrap
 			.unwrap()
 	};
 }
@@ -60,26 +63,29 @@ macro_rules! get_player_mut {
 	($players:ident, $i:expr) => {
 		$players
 			.get_mut($i)
-			.ok_or(())
-			.map_err(|_| log::error!("{} is not a valid id", $i))
+			.ok_or("Player not found")
+			.map_err(|e| log::error!("{} is not a valid id: {}", $i, e))
 			.unwrap()
 	};
 }
 
-pub fn run() {
+pub fn run() -> Result<()> {
 	use std::panic;
 
 	log::debug!("Starting...");
 	log_panics::init();
+	// TODO: do something about it
 	if let Err(e) = panic::catch_unwind(start) {
-		let term = Term::new();
-		term.messagebox("sowwy! OwO the pwogwam cwashed! 🥺 pwease d-don't bwame the d-devewopew, òωó he's d-doing his best!");
+		if let Ok(term) = Term::new() {
+			let _ = term.messagebox("sowwy! OwO the pwogwam cwashed! 🥺 pwease d-don't bwame the d-devewopew, òωó he's d-doing his best!");
+		}
 		panic::resume_unwind(e);
 	}
+	Ok(())
 }
 
-fn start() {
-	let term = Term::new();
+fn start() -> Result<()> {
+	let term = Term::new()?;
 	let mut games: Vec<(String, GameState)> = Vec::new();
 
 	let file_contents = std::fs::read_to_string("games.json");
@@ -92,19 +98,18 @@ fn start() {
 			Err(e) => {
 				// TODO: convert old format with Vec to the new with HashMap
 				log::error!("The database is corrupted: {}", e);
-				if term.messagebox_yn("The database is corrupted. Continue?") {
+				if term.messagebox_yn("The database is corrupted. Continue?")? {
 					let db_bak = format!(
 						"games.json.bak-{}",
 						std::time::SystemTime::now()
-							.duration_since(std::time::UNIX_EPOCH)
-							.unwrap()
+							.duration_since(std::time::UNIX_EPOCH)?
 							.as_secs()
 					);
 					log::info!("Coping the old corrupted db to {}", db_bak);
 					let _ = std::fs::copy("games.json", db_bak)
 						.map_err(|e| log::error!("Error copying: {}", e));
 				} else {
-					return;
+					return Err(e.into());
 				}
 			}
 		}
@@ -120,63 +125,69 @@ fn start() {
 			.collect::<Vec<&str>>();
 		options.push("Add...");
 		loop {
-			match term.messagebox_with_options("Choose the game", &options, true) {
+			match term.messagebox_with_options("Choose the game", &options, true)? {
 				Some(num) => {
 					if num >= games.len().into() {
 						let name =
-							term.messagebox_with_input_field("Enter the name of the new game");
+							term.messagebox_with_input_field("Enter the name of the new game")?;
 						games.push((name, GameState::default()));
 					}
 					break num;
 				}
-				None => return,
+				None => return Ok(()),
 			}
 		}
 	};
 
-	let mut state = &mut games.get_mut(*game_num).unwrap().1;
+	let mut state = &mut games
+		.get_mut(*game_num)
+		.ok_or(anyhow::Error::msg("Game not found"))?
+		.1;
 
 	if !state.players.is_empty() && state.order.is_empty() {
 		state.order = state.players.sort_ids().iter().map(|id| *id).collect();
 	}
 
 	loop {
-		match term.draw_main_menu() {
+		match term.draw_main_menu()? {
 			MainMenuAction::Play => {
 				if state.players.is_empty() {
 					term.messagebox(
 						"Can't start the game with no players. Try again after you add some",
-					);
+					)?;
 					continue;
 				}
 				if state.order.is_empty() {
-					term.messagebox("There are no player in the so-called \"Player Order\". Who's gonna play the game if there is no order of players?");
+					term.messagebox("There are no player in the so-called \"Player Order\". Who's gonna play the game if there is no order of players?")?;
 					continue;
 				}
-				game_start(&term, &mut state.players, &state.order);
+				game_start(&term, &mut state.players, &state.order)?;
 			}
-			MainMenuAction::Edit => character_menu(&term, &mut state.players),
+			MainMenuAction::Edit => character_menu(&term, &mut state.players)?,
 			MainMenuAction::ReorderPlayers => {
 				if state.players.is_empty() {
 					term.messagebox(
 						"Can't reorder when there are no players. Try again after you add some",
-					);
+					)?;
 					continue;
 				}
-				state.order = reorder_players(&term, &state.order, &mut state.players)
+				state.order = reorder_players(&term, &state.order, &mut state.players)?
 			}
 			MainMenuAction::Quit => break,
 		}
 	}
 
 	log::debug!("Saving game data to the db");
-	let _ = std::fs::write("games.json", serde_json::to_string(&games).unwrap())
-		.map_err(|e| log::error!("Error saving game data to the db: {}", e));
+	std::fs::write("games.json", serde_json::to_string(&games)?).map_err(|e| {
+		log::error!("Error saving game data to the db: {}", e);
+		e
+	})?;
 
 	log::debug!("Exiting...");
+	Ok(())
 }
 
-fn game_start(term: &Term, players: &mut Players, player_order: &[Uid]) {
+fn game_start(term: &Term, players: &mut Players, player_order: &[Uid]) -> Result<()> {
 	log::debug!("In the game menu...");
 	enum NextPlayerState {
 		Default,
@@ -189,7 +200,7 @@ fn game_start(term: &Term, players: &mut Players, player_order: &[Uid]) {
 	'game: loop {
 		if let NextPlayerState::Pending = next_player {
 			log::debug!("Pending a next player change.");
-			if let Some(picked_player) = term.pick_player(players) {
+			if let Some(picked_player) = term.pick_player(players)? {
 				log::debug!("Picked next player: {}", picked_player.name);
 				next_player = NextPlayerState::Picked(picked_player);
 			}
@@ -206,7 +217,7 @@ fn game_start(term: &Term, players: &mut Players, player_order: &[Uid]) {
 			}
 			log::debug!("Current turn: {} #{}", get_player!(players, id).name, id);
 			loop {
-				match term.draw_game(get_player!(players, id)) {
+				match term.draw_game(get_player!(players, id))? {
 					// TODO: combine lesser used options into a menu
 					// TODO: use skills on others -> adds status
 					// TODO: rename "Drain status" to "Got hit"/"Hit mob"
@@ -215,24 +226,24 @@ fn game_start(term: &Term, players: &mut Players, player_order: &[Uid]) {
 						let skills = &mut get_player_mut!(players, id).skills;
 						log::debug!("Choosing a skill to use");
 						loop {
-							let input = match term.choose_skill(skills) {
+							let input = match term.choose_skill(skills)? {
 								Some(num) => num,
-								None => return,
+								None => continue,
 							};
 							log::debug!("Chose skill #{}", input);
 							match skills.get_mut(*input) {
 								Some(skill) => {
 									if skill.r#use().is_err() {
-										term.messagebox("Skill still on cooldown");
+										term.messagebox("Skill still on cooldown")?;
 									}
 									break;
 								}
-								None => term.messagebox("Number out of bounds"),
+								None => term.messagebox("Number out of bounds")?,
 							}
 						}
 					}
 					GameAction::AddStatus => {
-						if let Some(status) = term.choose_status() {
+						if let Some(status) = term.choose_status()? {
 							log::debug!(
 								"Adding status {:?} for {}, type: {:?}",
 								status.status_type,
@@ -261,8 +272,7 @@ fn game_start(term: &Term, players: &mut Players, player_order: &[Uid]) {
 							.filter_map(|x| {
 								if get_player!(players, id)
 									.statuses
-									.get(*x)
-									.unwrap()
+									.get(*x)?
 									.status_cooldown_type == StatusCooldownType::Manual
 								{
 									Some(*x)
@@ -281,12 +291,16 @@ fn game_start(term: &Term, players: &mut Players, player_order: &[Uid]) {
 								)
 							})
 							.collect::<Vec<String>>();
-						if let Some(num) =
-							term.messagebox_with_options("Pick status", &manual_statuses_list, true)
-						{
-							get_player_mut!(players, id)
-								.statuses
-								.drain_by_id(*manual_statuses.get(*num).unwrap());
+						if let Some(num) = term.messagebox_with_options(
+							"Pick status",
+							&manual_statuses_list,
+							true,
+						)? {
+							get_player_mut!(players, id).statuses.drain_by_id(
+								*manual_statuses
+									.get(*num)
+									.ok_or(anyhow::Error::msg("Couldn't drain manual status"))?,
+							)?;
 						}
 					}
 					GameAction::ClearStatuses => get_player_mut!(players, id).statuses.clear(),
@@ -300,7 +314,10 @@ fn game_start(term: &Term, players: &mut Players, player_order: &[Uid]) {
 							.iter_mut()
 							.for_each(|skill| skill.cooldown_left = 0);
 					}
-					GameAction::ManageMoney => get_player_mut!(players, id).manage_money(term),
+					GameAction::ManageMoney => {
+						let diff = term.get_money_amount()?;
+						get_player_mut!(players, id).manage_money(diff);
+					}
 					GameAction::MakeTurn => {
 						get_player_mut!(players, id).turn();
 						break;
@@ -318,38 +335,36 @@ fn game_start(term: &Term, players: &mut Players, player_order: &[Uid]) {
 	}
 
 	log::debug!("Exiting the game...");
+	Ok(())
 }
 
-fn character_menu(term: &Term, players: &mut Players) {
+fn character_menu(term: &Term, players: &mut Players) -> Result<()> {
 	log::debug!("In the character menu...");
 	let mut last_selected: Option<Uid> = None;
 	loop {
-		match term
-			.draw_character_menu(
-				CharacterMenuMode::View {
-					selected: last_selected,
-				},
-				players,
-			)
-			.unwrap()
-		{
+		match term.draw_character_menu(
+			CharacterMenuMode::View {
+				selected: last_selected,
+			},
+			players,
+		)? {
 			CharacterMenuAction::Add => {
 				let id = players.push(Player::default());
 				log::debug!("Added a new player with id #{}", id);
-				edit_player(term, players, id);
+				edit_player(term, players, id)?;
 				// TODO: find out which pos the new player has in the list
 				//last_selected = Some(id);
 				last_selected = None;
 			}
 			CharacterMenuAction::Edit(num) => {
 				log::debug!("Editing player #{}", num);
-				edit_player(term, players, num);
+				edit_player(term, players, num)?;
 				last_selected = Some(num);
 			}
 			// TODO: remove skills
 			CharacterMenuAction::Delete(num) => {
 				log::debug!("Confirming deletion of player #{}", num);
-				if term.messagebox_yn("Are you sure?") {
+				if term.messagebox_yn("Are you sure?")? {
 					log::debug!("Deleting #{}", num);
 					// TODO: fix logic. Use the actual id instead of order id
 					players.remove(num);
@@ -370,9 +385,10 @@ fn character_menu(term: &Term, players: &mut Players) {
 	}
 
 	log::debug!("Exiting the character menu...");
+	Ok(())
 }
 
-fn edit_player(term: &Term, players: &mut Players, id: Uid) {
+fn edit_player(term: &Term, players: &mut Players, id: Uid) -> Result<()> {
 	log::debug!("Editing player #{}", id);
 	let mut selected_field = PlayerField::Name; // TODO: maybe use something like new()?
 	loop {
@@ -394,11 +410,11 @@ fn edit_player(term: &Term, players: &mut Players, id: Uid) {
 				selected_field,
 			},
 			players,
-		) {
-			Some(CharacterMenuAction::Editing {
+		)? {
+			CharacterMenuAction::Editing {
 				buffer,
 				field_offset,
-			}) => {
+			} => {
 				let player = get_player_mut!(players, id);
 				match selected_field {
 					PlayerField::Name => {
@@ -424,7 +440,9 @@ fn edit_player(term: &Term, players: &mut Players, id: Uid) {
 						let stat_id = {
 							let stat_list = STAT_LIST.lock().unwrap();
 							let vec = stat_list.as_vec();
-							*vec.get(selected).unwrap().0
+							*vec.get(selected)
+								.ok_or(anyhow::Error::msg("Player not found"))?
+								.0
 						};
 
 						if let Ok(buffer) = buffer
@@ -488,7 +506,7 @@ fn edit_player(term: &Term, players: &mut Players, id: Uid) {
 				}
 			}
 			// TODO: properly check for empty buffer in player and skill names
-			Some(CharacterMenuAction::DoneEditing) => {
+			CharacterMenuAction::DoneEditing => {
 				let player = get_player_mut!(players, id);
 				log::debug!("Done editing {}", player.name);
 				if let Some(skill) = player.skills.last() {
@@ -507,9 +525,14 @@ fn edit_player(term: &Term, players: &mut Players, id: Uid) {
 	}
 
 	log::debug!("Exiting out of the character menu...");
+	Ok(())
 }
 
-fn reorder_players(term: &Term, old_player_order: &[Uid], players: &mut Players) -> Vec<Uid> {
+fn reorder_players(
+	term: &Term,
+	old_player_order: &[Uid],
+	players: &mut Players,
+) -> Result<Vec<Uid>> {
 	let mut player_list: Vec<(Uid, &str)> = old_player_order
 		.iter()
 		.map(|&id| (id, players.get(id).unwrap().name.as_str()))
@@ -520,7 +543,7 @@ fn reorder_players(term: &Term, old_player_order: &[Uid], players: &mut Players)
 		let mut options: Vec<&str> = player_list.iter().map(|(_, name)| *name).collect();
 		// TODO: add an option to add a removed player without resetting
 		options.push("Reset");
-		match term.messagebox_with_options("Choose which player to move", &options, true) {
+		match term.messagebox_with_options("Choose which player to move", &options, true)? {
 			Some(num) => {
 				// Reset is the last option, not an actual player name
 				if num == (options.len() - 1).into() {
@@ -542,7 +565,7 @@ fn reorder_players(term: &Term, old_player_order: &[Uid], players: &mut Players)
 						&name_list,
 						state.selected_onum(),
 						true,
-					) {
+					)? {
 						// TODO: add more checks for unwrap()
 						KeyCode::Down => {
 							let selected = state.selected().unwrap();
@@ -578,5 +601,5 @@ fn reorder_players(term: &Term, old_player_order: &[Uid], players: &mut Players)
 		}
 	}
 
-	player_list.into_iter().map(|(id, _)| id).collect()
+	Ok(player_list.into_iter().map(|(id, _)| id).collect())
 }

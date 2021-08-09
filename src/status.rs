@@ -1,5 +1,6 @@
 use crate::entity_list::EntityList;
 use crate::id::Uid;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -63,14 +64,17 @@ impl Statuses {
 	}
 
 	// TODO: combine with the one from the above
-	pub fn drain_by_id(&mut self, id: Uid) {
-		let curr = self.get_mut(id).unwrap();
+	pub fn drain_by_id(&mut self, id: Uid) -> Result<()> {
+		let curr = self
+			.get_mut(id)
+			.ok_or(anyhow::Error::msg("Couldn't find player"))?;
 		if curr.duration > 0 {
 			log::debug!("Drained {:?}, uid {}", curr.status_type, id);
 			curr.duration -= 1;
 		}
 
 		self.map.retain(|_, status| status.duration > 0);
+		Ok(())
 	}
 }
 

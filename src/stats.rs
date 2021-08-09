@@ -18,9 +18,8 @@ impl StatList {
 		self.map.len()
 	}
 
-	pub fn get_name(&self, id: usize) -> &str {
-		// TODO: check if exists. May crash otherwise
-		self.map.get(&id).unwrap().as_str()
+	pub fn get_name(&self, id: usize) -> Option<&str> {
+		Some(self.map.get(&id)?.as_str())
 	}
 
 	pub fn contains(&self, id: usize) -> bool {

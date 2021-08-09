@@ -1,4 +1,4 @@
-use crate::id::{OrderNum, Uid};
+use crate::id::Uid;
 use crate::status::StatusCooldownType;
 
 pub enum MainMenuAction {

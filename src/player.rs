@@ -5,7 +5,6 @@ use crate::stats::Stats;
 use crate::status::Status;
 use crate::status::StatusCooldownType;
 use crate::status::Statuses;
-use crate::term::Term;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -80,10 +79,11 @@ impl Player {
 		self.get_player_state()
 	}
 
-	pub fn manage_money(&mut self, term: &Term) {
-		let diff = term.get_money_amount();
+	pub fn manage_money(&mut self, diff: i64) -> i64 {
+		//let diff = term.get_money_amount()?;
 		log::debug!("Adding {} money to Player {}", diff, self.name);
 		self.money += diff;
+		self.money
 	}
 }
 

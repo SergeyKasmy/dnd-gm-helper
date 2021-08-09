@@ -9,9 +9,11 @@ use crate::skill::Skill;
 use crate::status::{Status, StatusCooldownType, StatusType};
 use crate::term::list_state_ext::ListStateExt;
 use crate::STAT_LIST;
+use anyhow::Result;
 use crossterm::event::{read as read_event, Event, KeyCode};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::io::{stdout, Stdout};
 use tui::{
 	backend::CrosstermBackend,
@@ -21,8 +23,6 @@ use tui::{
 	widgets::{Block, Borders, Cell, List, ListItem, ListState, Paragraph, Row, Table},
 	Terminal,
 };
-
-use std::convert::TryFrom;
 
 #[derive(Copy, Clone)]
 pub enum CharacterMenuMode {
@@ -45,11 +45,11 @@ pub struct Term {
 }
 
 impl Term {
-	pub fn new() -> Term {
-		crossterm::terminal::enable_raw_mode().unwrap();
-		Term {
-			term: RefCell::new(Terminal::new(CrosstermBackend::new(stdout())).unwrap()),
-		}
+	pub fn new() -> Result<Term> {
+		crossterm::terminal::enable_raw_mode()?;
+		Ok(Term {
+			term: RefCell::new(Terminal::new(CrosstermBackend::new(stdout()))?),
+		})
 	}
 
 	fn get_pretty_player_list(players: &Players) -> (Vec<(Uid, &Player)>, HashMap<OrderNum, Uid>) {
@@ -160,8 +160,8 @@ impl Term {
 		options: &[T],
 		selected: Option<OrderNum>,
 		is_vertical: bool,
-	) -> KeyCode {
-		self.term.borrow_mut().clear().unwrap();
+	) -> Result<KeyCode> {
+		self.term.borrow_mut().clear()?;
 		if options.is_empty() {
 			panic!("Can't show a dialog with no buttons")
 		}
@@ -202,87 +202,84 @@ impl Term {
 		let mut state = ListState::default();
 		state.select_onum(selected);
 		loop {
-			self.term
-				.borrow_mut()
-				.draw(|frame| {
-					let block_rect = Term::get_centered_box(frame.size(), width, height);
-					let (desc_rect, buttons_rect) =
-						Term::get_messagebox_text_input_locations(block_rect);
+			self.term.borrow_mut().draw(|frame| {
+				let block_rect = Term::get_centered_box(frame.size(), width, height);
+				let (desc_rect, buttons_rect) =
+					Term::get_messagebox_text_input_locations(block_rect);
 
-					let block = Block::default().borders(Borders::ALL);
-					let desc = Paragraph::new(desc).alignment(Alignment::Center);
-					frame.render_widget(block.clone(), block_rect);
-					frame.render_widget(desc, desc_rect);
+				let block = Block::default().borders(Borders::ALL);
+				let desc = Paragraph::new(desc).alignment(Alignment::Center);
+				frame.render_widget(block.clone(), block_rect);
+				frame.render_widget(desc, desc_rect);
 
-					if !is_vertical {
-						const OFFSET_BETWEEN_BUTTONS: u16 = 3;
-						let buttons_rect = {
-							let offset = {
-								let mut tmp = buttons_rect.width;
-								tmp -= options
-									.iter()
-									.map(|item| item.as_ref().chars().count() as u16)
-									.sum::<u16>();
-								// if more than out button, substract spacing between them
-								if options.len() > 1 {
-									tmp -= OFFSET_BETWEEN_BUTTONS * (options.len() as u16 - 1);
-								}
-								tmp /= 2;
+				if !is_vertical {
+					const OFFSET_BETWEEN_BUTTONS: u16 = 3;
+					let buttons_rect = {
+						let offset = {
+							let mut tmp = buttons_rect.width;
+							tmp -= options
+								.iter()
+								.map(|item| item.as_ref().chars().count() as u16)
+								.sum::<u16>();
+							// if more than out button, substract spacing between them
+							if options.len() > 1 {
+								tmp -= OFFSET_BETWEEN_BUTTONS * (options.len() as u16 - 1);
+							}
+							tmp /= 2;
 
-								tmp
-							};
-
-							let mut tmp = buttons_rect;
-							tmp.x += offset;
 							tmp
 						};
 
-						for (i, option) in options.iter().enumerate() {
-							let button_style = if i == state.selected().unwrap_or(0) {
-								Style::default().bg(Color::White).fg(Color::Black)
-							} else {
-								Style::default()
-							};
+						let mut tmp = buttons_rect;
+						tmp.x += offset;
+						tmp
+					};
 
-							let button = Paragraph::new(option.as_ref()).style(button_style);
+					for (i, option) in options.iter().enumerate() {
+						let button_style = if i == state.selected().unwrap_or(0) {
+							Style::default().bg(Color::White).fg(Color::Black)
+						} else {
+							Style::default()
+						};
 
-							let rect = {
-								let mut tmp = buttons_rect;
-								tmp.width = option.as_ref().chars().count() as u16;
-								if i > 0 {
-									tmp.x += options[i - 1].as_ref().len() as u16;
-									tmp.x += OFFSET_BETWEEN_BUTTONS;
-								}
+						let button = Paragraph::new(option.as_ref()).style(button_style);
 
-								tmp
-							};
+						let rect = {
+							let mut tmp = buttons_rect;
+							tmp.width = option.as_ref().chars().count() as u16;
+							if i > 0 {
+								tmp.x += options[i - 1].as_ref().len() as u16;
+								tmp.x += OFFSET_BETWEEN_BUTTONS;
+							}
 
-							frame.render_widget(button, rect);
-						}
-					} else {
-						for (i, option) in options.iter().enumerate() {
-							let rect = {
-								let mut tmp = buttons_rect;
-								tmp.y += i as u16;
-								tmp.width = option.as_ref().chars().count() as u16;
-								tmp
-							};
+							tmp
+						};
 
-							let button_style = if i == state.selected().unwrap_or(0) {
-								Style::default().bg(Color::White).fg(Color::Black)
-							} else {
-								Style::default()
-							};
-
-							let button = Paragraph::new(option.as_ref()).style(button_style);
-							frame.render_widget(button, rect);
-						}
+						frame.render_widget(button, rect);
 					}
-				})
-				.unwrap();
+				} else {
+					for (i, option) in options.iter().enumerate() {
+						let rect = {
+							let mut tmp = buttons_rect;
+							tmp.y += i as u16;
+							tmp.width = option.as_ref().chars().count() as u16;
+							tmp
+						};
 
-			if let Event::Key(key) = read_event().unwrap() {
-				return key.code;
+						let button_style = if i == state.selected().unwrap_or(0) {
+							Style::default().bg(Color::White).fg(Color::Black)
+						} else {
+							Style::default()
+						};
+
+						let button = Paragraph::new(option.as_ref()).style(button_style);
+						frame.render_widget(button, rect);
+					}
+				}
+			})?;
+
+			if let Event::Key(key) = read_event()? {
+				return Ok(key.code);
 			}
 		}
 	}
@@ -292,7 +289,7 @@ impl Term {
 		desc: &str,
 		options: &[T],
 		is_vertical: bool,
-	) -> Option<OrderNum> {
+	) -> Result<Option<OrderNum>> {
 		let mut state = ListState::default();
 		state.select(Some(0));
 		loop {
@@ -301,17 +298,17 @@ impl Term {
 				options,
 				state.selected_onum(),
 				is_vertical,
-			) {
-				KeyCode::Enter => return Some(state.selected_onum().unwrap_or(0.into())),
+			)? {
+				KeyCode::Enter => return Ok(Some(state.selected_onum().unwrap_or(0.into()))),
 				KeyCode::Char(ch) => {
 					if let Some(num) = ch.to_digit(10) {
 						let num: OrderNum = (num as usize - 1).into();
 						if num < options.len().into() {
-							return Some(num);
+							return Ok(Some(num));
 						}
 					}
 				}
-				KeyCode::Esc => return None,
+				KeyCode::Esc => return Ok(None),
 				KeyCode::Right if !is_vertical => {
 					state.next(options.len());
 				}
@@ -329,37 +326,33 @@ impl Term {
 		}
 	}
 
-	pub fn messagebox_with_input_field(&self, desc: &str) -> String {
-		self.term.borrow_mut().clear().unwrap();
+	pub fn messagebox_with_input_field(&self, desc: &str) -> Result<String> {
+		self.term.borrow_mut().clear()?;
 		let width = desc.len() as u16 + 4;
 		let height = 7;
 		let mut buffer = String::new();
 
 		loop {
-			self.term
-				.borrow_mut()
-				.draw(|frame| {
-					let block_rect = Term::get_centered_box(frame.size(), width, height);
-					let (desc_rect, input_rect) =
-						Term::get_messagebox_text_input_locations(block_rect);
+			self.term.borrow_mut().draw(|frame| {
+				let block_rect = Term::get_centered_box(frame.size(), width, height);
+				let (desc_rect, input_rect) = Term::get_messagebox_text_input_locations(block_rect);
 
-					let block = Block::default().borders(Borders::ALL);
-					let desc = Paragraph::new(desc).alignment(Alignment::Center);
-					let input = Paragraph::new(buffer.as_str());
-					frame.render_widget(block.clone(), block_rect);
-					frame.render_widget(desc, desc_rect);
-					frame.render_widget(input, input_rect);
-				})
-				.unwrap();
+				let block = Block::default().borders(Borders::ALL);
+				let desc = Paragraph::new(desc).alignment(Alignment::Center);
+				let input = Paragraph::new(buffer.as_str());
+				frame.render_widget(block.clone(), block_rect);
+				frame.render_widget(desc, desc_rect);
+				frame.render_widget(input, input_rect);
+			})?;
 
-			if let Event::Key(key) = read_event().unwrap() {
+			if let Event::Key(key) = read_event()? {
 				match key.code {
 					KeyCode::Char(ch) => buffer.push(ch),
 					KeyCode::Backspace => {
 						buffer.pop();
 					}
 					KeyCode::Enter => {
-						return buffer;
+						return Ok(buffer);
 					}
 					_ => (),
 				}
@@ -367,19 +360,20 @@ impl Term {
 		}
 	}
 
-	pub fn messagebox_yn(&self, desc: &str) -> bool {
-		matches!(
-			self.messagebox_with_options(desc, &["Yes", "No"], false),
+	pub fn messagebox_yn(&self, desc: &str) -> Result<bool> {
+		Ok(matches!(
+			self.messagebox_with_options(desc, &["Yes", "No"], false)?,
 			Some(OrderNum(0))
-		)
+		))
 	}
 
-	pub fn messagebox(&self, desc: &str) {
-		self.messagebox_with_options(desc, &["OK"], false);
+	pub fn messagebox(&self, desc: &str) -> Result<()> {
+		self.messagebox_with_options(desc, &["OK"], false)?;
+		Ok(())
 	}
 
-	pub fn draw_main_menu(&self) -> MainMenuAction {
-		self.term.borrow_mut().clear().unwrap();
+	pub fn draw_main_menu(&self) -> Result<MainMenuAction> {
+		self.term.borrow_mut().clear()?;
 		let items = [
 			"Start game",
 			"Manage characters",
@@ -389,56 +383,53 @@ impl Term {
 		let mut list_state = ListState::default();
 		list_state.select(Some(0));
 		loop {
-			self.term
-				.borrow_mut()
-				.draw(|frame| {
-					let longest_len = items.iter().fold(0, |acc, item| {
-						let len = item.chars().count();
-						if len > acc {
-							len
-						} else {
-							acc
-						}
-					});
-					let list = List::new(
-						items
-							.iter()
-							.map(|item| ListItem::new(*item))
-							.collect::<Vec<ListItem>>(),
-					)
-					.highlight_style(Style::default().bg(Color::White).fg(Color::Black));
+			self.term.borrow_mut().draw(|frame| {
+				let longest_len = items.iter().fold(0, |acc, item| {
+					let len = item.chars().count();
+					if len > acc {
+						len
+					} else {
+						acc
+					}
+				});
+				let list = List::new(
+					items
+						.iter()
+						.map(|item| ListItem::new(*item))
+						.collect::<Vec<ListItem>>(),
+				)
+				.highlight_style(Style::default().bg(Color::White).fg(Color::Black));
 
-					let (win_rect, statusbar_rect) = self.get_window_size(frame.size());
-					let menu_location = Term::get_centered_box(
-						win_rect,
-						longest_len as u16 + 4,
-						items.len() as u16 + 4,
-					);
-					frame.render_stateful_widget(list, menu_location, &mut list_state);
-					frame.render_widget(
-						Term::stylize_statusbar(
-							format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION")),
-							StatusBarType::Normal,
-						),
-						statusbar_rect,
-					);
-				})
-				.unwrap();
+				let (win_rect, statusbar_rect) = self.get_window_size(frame.size());
+				let menu_location = Term::get_centered_box(
+					win_rect,
+					longest_len as u16 + 4,
+					items.len() as u16 + 4,
+				);
+				frame.render_stateful_widget(list, menu_location, &mut list_state);
+				frame.render_widget(
+					Term::stylize_statusbar(
+						format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION")),
+						StatusBarType::Normal,
+					),
+					statusbar_rect,
+				);
+			})?;
 
-			if let Event::Key(key) = read_event().unwrap() {
+			if let Event::Key(key) = read_event()? {
 				match key.code {
 					KeyCode::Esc => {
-						if self.messagebox_yn("Are you sure you want to quit?") {
-							return MainMenuAction::Quit;
+						if self.messagebox_yn("Are you sure you want to quit?")? {
+							return Ok(MainMenuAction::Quit);
 						}
 					}
 					KeyCode::Char(ch) => match ch {
-						'1' => return MainMenuAction::Play,
-						'2' => return MainMenuAction::Edit,
-						'3' => return MainMenuAction::ReorderPlayers,
+						'1' => return Ok(MainMenuAction::Play),
+						'2' => return Ok(MainMenuAction::Edit),
+						'3' => return Ok(MainMenuAction::ReorderPlayers),
 						'4' | 'q' => {
-							if self.messagebox_yn("Are you sure you want to quit?") {
-								return MainMenuAction::Quit;
+							if self.messagebox_yn("Are you sure you want to quit?")? {
+								return Ok(MainMenuAction::Quit);
 							}
 						}
 						_ => (),
@@ -452,10 +443,11 @@ impl Term {
 					KeyCode::Enter => {
 						if let Some(i) = list_state.selected() {
 							return match i {
-								0 => MainMenuAction::Play,
-								1 => MainMenuAction::Edit,
-								2 => MainMenuAction::ReorderPlayers,
-								3 => MainMenuAction::Quit,
+								// TODO: dedup
+								0 => Ok(MainMenuAction::Play),
+								1 => Ok(MainMenuAction::Edit),
+								2 => Ok(MainMenuAction::ReorderPlayers),
+								3 => Ok(MainMenuAction::Quit),
 								_ => unreachable!(),
 							};
 						}
@@ -466,100 +458,98 @@ impl Term {
 		}
 	}
 
-	pub fn draw_game(&self, player: &Player) -> GameAction {
+	pub fn draw_game(&self, player: &Player) -> Result<GameAction> {
 		loop {
-			self.term
-				.borrow_mut()
-				.draw(|frame| {
-					let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
+			self.term.borrow_mut().draw(|frame| {
+				let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
 
-					let mut player_stats =
-						Term::player_stats(player, None, window_rect, None, None);
-					while let Some((table, table_rect)) = player_stats.pop() {
-						frame.render_widget(table, table_rect);
-					}
+				let mut player_stats = Term::player_stats(player, None, window_rect, None, None);
+				while let Some((table, table_rect)) = player_stats.pop() {
+					frame.render_widget(table, table_rect);
+				}
 
-					let delimiter = Span::raw(" | ");
-					let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
-					let statusbar_text = Spans::from(vec![
-						" Use ".into(),
-						Span::styled("s", style_underlined),
-						"kill".into(),
-						delimiter.clone(),
-						Span::styled("A", style_underlined),
-						"dd status".into(),
-						delimiter.clone(),
-						Span::styled("D", style_underlined),
-						"rain status".into(),
-						delimiter.clone(),
-						Span::styled("C", style_underlined),
-						"lear statuses".into(),
-						", ".into(),
-						"skill CD :".into(),
-						Span::styled("v", style_underlined),
-						delimiter.clone(),
-						"Manage ".into(),
-						Span::styled("m", style_underlined),
-						"oney".into(),
-						delimiter.clone(),
-						"Next turn: \"".into(),
-						Span::styled(" ", style_underlined),
-						"\"".into(),
-						delimiter.clone(),
-						"Ski".into(),
-						Span::styled("p", style_underlined),
-						" turn".into(),
-						delimiter.clone(),
-						"Pick next pl.: ".into(),
-						Span::styled("o", style_underlined),
-						delimiter.clone(),
-						Span::styled("Q", style_underlined),
-						"uit".into(),
-					]);
+				let delimiter = Span::raw(" | ");
+				let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
+				let statusbar_text = Spans::from(vec![
+					" Use ".into(),
+					Span::styled("s", style_underlined),
+					"kill".into(),
+					delimiter.clone(),
+					Span::styled("A", style_underlined),
+					"dd status".into(),
+					delimiter.clone(),
+					Span::styled("D", style_underlined),
+					"rain status".into(),
+					delimiter.clone(),
+					Span::styled("C", style_underlined),
+					"lear statuses".into(),
+					", ".into(),
+					"skill CD :".into(),
+					Span::styled("v", style_underlined),
+					delimiter.clone(),
+					"Manage ".into(),
+					Span::styled("m", style_underlined),
+					"oney".into(),
+					delimiter.clone(),
+					"Next turn: \"".into(),
+					Span::styled(" ", style_underlined),
+					"\"".into(),
+					delimiter.clone(),
+					"Ski".into(),
+					Span::styled("p", style_underlined),
+					" turn".into(),
+					delimiter.clone(),
+					"Pick next pl.: ".into(),
+					Span::styled("o", style_underlined),
+					delimiter.clone(),
+					Span::styled("Q", style_underlined),
+					"uit".into(),
+				]);
 
-					frame.render_widget(
-						Term::stylize_statusbar(statusbar_text, StatusBarType::Normal),
-						statusbar_rect,
-					);
-				})
-				.unwrap();
+				frame.render_widget(
+					Term::stylize_statusbar(statusbar_text, StatusBarType::Normal),
+					statusbar_rect,
+				);
+			})?;
 
-			if let Event::Key(key) = read_event().unwrap() {
+			if let Event::Key(key) = read_event()? {
 				match key.code {
 					KeyCode::Char(ch) => match ch {
-						's' => return GameAction::UseSkill,
-						'a' => return GameAction::AddStatus,
+						's' => return Ok(GameAction::UseSkill),
+						'a' => return Ok(GameAction::AddStatus),
 						'd' => {
 							match self.messagebox_with_options(
 								"Which statuses to drain?",
 								&["On attacking", "On getting attacked", "Manual"],
 								true,
-							) {
+							)? {
 								Some(OrderNum(0)) => {
-									return GameAction::DrainStatus(StatusCooldownType::OnAttacking)
+									return Ok(GameAction::DrainStatus(
+										StatusCooldownType::OnAttacking,
+									))
 								}
 								Some(OrderNum(1)) => {
-									return GameAction::DrainStatus(
+									return Ok(GameAction::DrainStatus(
 										StatusCooldownType::OnGettingAttacked,
-									)
+									))
 								}
 								Some(OrderNum(2)) => {
-									return GameAction::DrainStatus(StatusCooldownType::Manual)
+									return Ok(GameAction::DrainStatus(StatusCooldownType::Manual))
 								}
 								_ => (),
 							}
 						}
-						'c' => return GameAction::ClearStatuses,
-						'v' => return GameAction::ResetSkillsCD,
+						'c' => return Ok(GameAction::ClearStatuses),
+						'v' => return Ok(GameAction::ResetSkillsCD),
 						//'m' => return GameAction::ManageMoney,
-						'm' => self.messagebox("Turned off for now."),
-						' ' => return GameAction::MakeTurn,
-						'p' => return GameAction::SkipTurn,
-						'o' => return GameAction::NextPlayerPick,
-						'q' => return GameAction::Quit,
+						'm' => self.messagebox("Turned off for now.")?,
+						' ' => return Ok(GameAction::MakeTurn),
+						'p' => return Ok(GameAction::SkipTurn),
+						'o' => return Ok(GameAction::NextPlayerPick),
+						'q' => return Ok(GameAction::Quit),
 						_ => (),
 					},
-					KeyCode::Esc => return GameAction::Quit,
+					KeyCode::Esc => return Ok(GameAction::Quit),
 					_ => (),
 				}
 			}
@@ -770,7 +760,7 @@ impl Term {
 		stats
 	}
 
-	pub fn choose_skill(&self, skills: &[Skill]) -> Option<OrderNum> {
+	pub fn choose_skill(&self, skills: &[Skill]) -> Result<Option<OrderNum>> {
 		self.messagebox_with_options(
 			"Select skill",
 			skills
@@ -782,7 +772,7 @@ impl Term {
 		)
 	}
 
-	pub fn choose_status(&self) -> Option<Status> {
+	pub fn choose_status(&self) -> Result<Option<Status>> {
 		let status_list = [
 			"#1 Discharge",
 			"#2 Fire Attack",
@@ -796,29 +786,29 @@ impl Term {
 			"#0 Stun",
 		];
 
-		let status_type = match self.messagebox_with_options("Choose a status", &status_list, true)
-		{
-			Some(num) => match *num {
-				0 => StatusType::Discharge,
-				1 => StatusType::FireAttack,
-				2 => StatusType::FireShield,
-				3 => StatusType::IceShield,
-				4 => StatusType::Blizzard,
-				5 => StatusType::Fusion,
-				6 => StatusType::Luck,
-				7 => StatusType::Knockdown,
-				8 => StatusType::Poison,
-				9 => StatusType::Stun,
-				_ => unreachable!(),
-			},
-			None => return None,
-		};
+		let status_type =
+			match self.messagebox_with_options("Choose a status", &status_list, true)? {
+				Some(num) => match *num {
+					0 => StatusType::Discharge,
+					1 => StatusType::FireAttack,
+					2 => StatusType::FireShield,
+					3 => StatusType::IceShield,
+					4 => StatusType::Blizzard,
+					5 => StatusType::Fusion,
+					6 => StatusType::Luck,
+					7 => StatusType::Knockdown,
+					8 => StatusType::Poison,
+					9 => StatusType::Stun,
+					_ => unreachable!(),
+				},
+				None => return Ok(None),
+			};
 
 		let status_cooldown_type = match self.messagebox_with_options(
 			"Status cooldown type",
 			&["Normal", "On attacking", "On getting attacked", "Manual"],
 			true,
-		) {
+		)? {
 			Some(num) => match *num {
 				0 => StatusCooldownType::Normal,
 				1 => StatusCooldownType::OnAttacking,
@@ -826,59 +816,61 @@ impl Term {
 				3 => StatusCooldownType::Manual,
 				_ => unreachable!(),
 			},
-			None => return None,
+			None => return Ok(None),
 		};
 
 		let duration = loop {
 			match self
-				.messagebox_with_input_field("Status duration")
+				.messagebox_with_input_field("Status duration")?
 				.parse::<u32>()
 			{
 				Ok(num) => break num,
-				Err(_) => self.messagebox("Not a valid number"),
+				Err(_) => self.messagebox("Not a valid number")?,
 			}
 		};
 
-		Some(Status {
+		Ok(Some(Status {
 			status_type,
 			status_cooldown_type,
 			duration,
-		})
+		}))
 	}
 
-	pub fn get_money_amount(&self) -> i64 {
+	pub fn get_money_amount(&self) -> Result<i64> {
 		loop {
-			let input = self.messagebox_with_input_field("Add or remove money");
+			let input = self.messagebox_with_input_field("Add or remove money")?;
 
 			let input: i64 = match input.parse() {
 				Ok(num) => num,
 				Err(_) => {
 					self.messagebox(
 						format!("{} is not a valid input. Good examples: 500, -68", input).as_str(),
-					);
+					)?;
 					continue;
 				}
 			};
 
-			return input;
+			return Ok(input);
 		}
 	}
 
-	pub fn pick_player<'a>(&self, players: &'a mut Players) -> Option<&'a Player> {
+	pub fn pick_player<'a>(&self, players: &'a mut Players) -> Result<Option<&'a Player>> {
 		let (player_list, id_map) = Term::get_pretty_player_list(players);
 		// TODO: avoid collecting twice
 		let list: Vec<&str> = player_list.iter().map(|(_, x)| x.name.as_str()).collect();
-		return match self.messagebox_with_options("Pick a player", &list, true) {
-			Some(num) => Some(players.get(num.to_uid(&id_map).unwrap()).unwrap()),
-			None => None,
-		};
+		return Ok(
+			match self.messagebox_with_options("Pick a player", &list, true)? {
+				Some(num) => Some(players.get(num.to_uid(&id_map).unwrap()).unwrap()),
+				None => None,
+			},
+		);
 	}
 
 	pub fn draw_character_menu(
 		&self,
 		mode: CharacterMenuMode,
 		players: &mut Players,
-	) -> Option<CharacterMenuAction> {
+	) -> Result<CharacterMenuAction> {
 		fn validate_input(input: &str, field: PlayerField) -> bool {
 			match field {
 				PlayerField::Stat(_) | PlayerField::SkillCD(_) if !input.is_empty() => {
@@ -944,102 +936,97 @@ impl Term {
 		);
 
 		loop {
-			self.term
-				.borrow_mut()
-				.draw(|frame| {
-					let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
-					let tables = Layout::default()
-						.direction(Direction::Horizontal)
-						.constraints(
-							[Constraint::Percentage(20), Constraint::Percentage(80)].as_ref(),
-						)
-						.split(window_rect);
+			self.term.borrow_mut().draw(|frame| {
+				let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
+				let tables = Layout::default()
+					.direction(Direction::Horizontal)
+					.constraints([Constraint::Percentage(20), Constraint::Percentage(80)].as_ref())
+					.split(window_rect);
 
-					let player_list = List::new(player_list_items.clone())
-						.block(Block::default().title("Players").borders(Borders::ALL))
-						.highlight_symbol(">> ");
+				let player_list = List::new(player_list_items.clone())
+					.block(Block::default().title("Players").borders(Borders::ALL))
+					.highlight_symbol(">> ");
 
-					let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
-					let delimiter = Span::raw(" | ");
+				let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
+				let delimiter = Span::raw(" | ");
 
-					if errors.is_empty() {
-						let statusbar_text = match mode {
-							CharacterMenuMode::View { selected: _ } => Spans::from(vec![
-								" ".into(),
-								Span::styled("A", style_underlined),
-								"dd".into(),
-								delimiter.clone(),
-								Span::styled("E", style_underlined),
-								"dit".into(),
-								delimiter.clone(),
-								Span::styled("D", style_underlined),
-								"elete".into(),
-								delimiter.clone(),
-								Span::styled("Q", style_underlined),
-								"uit".into(),
-							]),
-							CharacterMenuMode::Edit { .. } => {
-								Spans::from(" Edit mode. Press ESC to quit")
-							}
-						};
-						frame.render_widget(
-							Term::stylize_statusbar(statusbar_text, StatusBarType::Normal),
-							statusbar_rect,
-						);
-					} else {
-						frame.render_widget(
-							Term::stylize_statusbar(errors.pop().unwrap(), StatusBarType::Error),
-							statusbar_rect,
-						);
-					}
-
-					frame.render_stateful_widget(player_list, tables[0], &mut player_list_state);
-
-					if let Some(num) = player_list_state.selected_onum() {
-						log::debug!("#{} is selected", num);
-						let selected_field =
-							if let CharacterMenuMode::Edit { selected_field, .. } = mode {
-								Some(selected_field)
-							} else {
-								None
-							};
-						let id = num.to_uid(&player_list_id_map).unwrap();
-						let selected_player = players.get(id).unwrap();
-						log::debug!("Got player #{}: {:#?}", id, selected_player);
-						let mut player_stats = Term::player_stats(
-							selected_player,
-							Some(id),
-							tables[1],
-							selected_field,
-							add_mode_buffer.as_deref(),
-						);
-						while let Some((table, table_rect)) = player_stats.pop() {
-							frame.render_widget(table, table_rect);
+				if errors.is_empty() {
+					let statusbar_text = match mode {
+						CharacterMenuMode::View { selected: _ } => Spans::from(vec![
+							" ".into(),
+							Span::styled("A", style_underlined),
+							"dd".into(),
+							delimiter.clone(),
+							Span::styled("E", style_underlined),
+							"dit".into(),
+							delimiter.clone(),
+							Span::styled("D", style_underlined),
+							"elete".into(),
+							delimiter.clone(),
+							Span::styled("Q", style_underlined),
+							"uit".into(),
+						]),
+						CharacterMenuMode::Edit { .. } => {
+							Spans::from(" Edit mode. Press ESC to quit")
 						}
-					}
-				})
-				.unwrap();
+					};
+					frame.render_widget(
+						Term::stylize_statusbar(statusbar_text, StatusBarType::Normal),
+						statusbar_rect,
+					);
+				} else {
+					frame.render_widget(
+						Term::stylize_statusbar(errors.pop().unwrap(), StatusBarType::Error),
+						statusbar_rect,
+					);
+				}
 
-			if let Event::Key(key) = read_event().unwrap() {
+				frame.render_stateful_widget(player_list, tables[0], &mut player_list_state);
+
+				if let Some(num) = player_list_state.selected_onum() {
+					log::debug!("#{} is selected", num);
+					let selected_field =
+						if let CharacterMenuMode::Edit { selected_field, .. } = mode {
+							Some(selected_field)
+						} else {
+							None
+						};
+					let id = num.to_uid(&player_list_id_map).unwrap();
+					let selected_player = players.get(id).unwrap();
+					log::debug!("Got player #{}: {:#?}", id, selected_player);
+					let mut player_stats = Term::player_stats(
+						selected_player,
+						Some(id),
+						tables[1],
+						selected_field,
+						add_mode_buffer.as_deref(),
+					);
+					while let Some((table, table_rect)) = player_stats.pop() {
+						frame.render_widget(table, table_rect);
+					}
+				}
+			})?;
+
+			if let Event::Key(key) = read_event()? {
 				match mode {
 					CharacterMenuMode::View { selected: _ } => match key.code {
 						KeyCode::Char(ch) => match ch {
-							'a' => return Some(CharacterMenuAction::Add),
+							'a' => return Ok(CharacterMenuAction::Add),
 							'e' => {
 								if let Some(i) = player_list_state.selected_onum() {
-									return Some(CharacterMenuAction::Edit(
+									return Ok(CharacterMenuAction::Edit(
 										i.to_uid(&player_list_id_map).unwrap(),
 									));
 								}
 							}
 							'd' => {
 								if let Some(i) = player_list_state.selected_onum() {
-									return Some(CharacterMenuAction::Delete(
+									return Ok(CharacterMenuAction::Delete(
 										i.to_uid(&player_list_id_map).unwrap(),
 									));
 								}
 							}
-							'q' => return Some(CharacterMenuAction::Quit),
+							'q' => return Ok(CharacterMenuAction::Quit),
 							_ => (),
 						},
 						KeyCode::Down => {
@@ -1048,7 +1035,7 @@ impl Term {
 						KeyCode::Up => {
 							player_list_state.prev(player_list_items.len());
 						}
-						KeyCode::Esc => return Some(CharacterMenuAction::Quit),
+						KeyCode::Esc => return Ok(CharacterMenuAction::Quit),
 						_ => (),
 					},
 					CharacterMenuMode::Edit { selected_field, .. } => {
@@ -1075,13 +1062,13 @@ impl Term {
 								validate!();
 							}
 							KeyCode::Up => {
-								return Some(CharacterMenuAction::Editing {
+								return Ok(CharacterMenuAction::Editing {
 									buffer: add_mode_buffer.unwrap(),
 									field_offset: Some(-1),
 								});
 							}
 							KeyCode::Down => {
-								return Some(CharacterMenuAction::Editing {
+								return Ok(CharacterMenuAction::Editing {
 									buffer: add_mode_buffer.unwrap(),
 									field_offset: Some(1),
 								});
@@ -1100,14 +1087,14 @@ impl Term {
 										}
 									}
 
-									return Some(CharacterMenuAction::Editing {
+									return Ok(CharacterMenuAction::Editing {
 										buffer: add_mode_buffer.unwrap(),
 										field_offset: None,
 									});
 								}
 							}
 							KeyCode::Esc => {
-								return Some(CharacterMenuAction::DoneEditing);
+								return Ok(CharacterMenuAction::DoneEditing);
 							}
 							_ => (),
 						}

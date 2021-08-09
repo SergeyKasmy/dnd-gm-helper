@@ -63,7 +63,7 @@ impl fmt::Display for PlayerField {
 		let stat_list = STAT_LIST.lock().unwrap();
 		let out = match self {
 			PlayerField::Name => "Name",
-			PlayerField::Stat(i) => stat_list.get_name(*i),
+			PlayerField::Stat(i) => stat_list.get_name(*i).unwrap(),
 			PlayerField::SkillName(_) => "", // not intended for actual use
 			PlayerField::SkillCD(_) => "",
 		};
