@@ -6,7 +6,8 @@ use std::collections::HashMap;
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct StatList {
-	#[serde(flatten)]
+    // TODO: uncomment all serde(flatten) attrs when I figure out how to get rid of "invalid type: string "", expected usize" error
+	//#[serde(flatten)]
 	map: HashMap<Uid, String>,
 
 	#[serde(skip)]
@@ -66,7 +67,7 @@ impl EntityList for StatList {
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct Stats {
-	#[serde(flatten)]
+	//#[serde(flatten)]
 	map: HashMap<Uid, i32>,
 }
 

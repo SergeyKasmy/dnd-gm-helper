@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct StatusList {
-	#[serde(flatten)]
+	//#[serde(flatten)]
 	map: HashMap<Uid, String>,
 
 	#[serde(skip)]
@@ -78,7 +78,7 @@ pub struct Status {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Statuses {
-	#[serde(flatten)]
+	//#[serde(flatten)]
 	map: HashMap<Uid, Status>,
 
 	#[serde(skip)]
