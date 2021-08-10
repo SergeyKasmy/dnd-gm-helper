@@ -1,6 +1,8 @@
 pub mod list_state_ext;
 
-use crate::action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
+use crate::action_enums::{
+	EditorAction, EditorActionEditMode, EditorActionViewMode, GameAction, MainMenuAction,
+};
 use crate::entity_list::EntityList;
 use crate::id::{OrderNum, Uid};
 use crate::player::{Player, Players};
@@ -9,9 +11,9 @@ use crate::skill::Skill;
 use crate::stats::StatList;
 use crate::status::{Status, StatusCooldownType, StatusList};
 use crate::term::list_state_ext::ListStateExt;
-use anyhow::anyhow;
 use anyhow::Result;
 use crossterm::event::{read as read_event, Event, KeyCode};
+use once_cell::sync::Lazy;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -25,14 +27,14 @@ use tui::{
 	Terminal,
 };
 
-#[derive(Copy, Clone)]
-pub enum CharacterMenuMode {
+#[derive(Clone)]
+pub enum EditorMode {
 	View {
-		selected: Option<Uid>,
+		selected: Option<OrderNum>,
 	},
 	Edit {
-		selected: Uid,
-		selected_field: PlayerField,
+		selected: OrderNum,
+		error: Option<String>,
 	},
 }
 
@@ -570,7 +572,7 @@ impl Term {
 		}
 	}
 
-	fn player_stats<'a>(
+	pub fn player_stats<'a>(
 		player: &'a Player,
 		stat_list: &StatList,
 		status_list: &StatusList,
@@ -863,185 +865,130 @@ impl Term {
 		);
 	}
 
-	pub fn draw_character_menu(
+	pub fn draw_editor<'a, T, TT, F>(
 		&self,
-		mode: CharacterMenuMode,
-		players: &mut Players,
-		stat_list: &StatList,
-		status_list: &StatusList,
-	) -> Result<CharacterMenuAction> {
-		fn validate_input(input: &str, field: PlayerField) -> bool {
-			match field {
-				PlayerField::Stat(_) | PlayerField::SkillCD(_) if !input.is_empty() => {
-					input.parse::<i64>().is_ok()
-				}
-				_ => true,
+		mode: EditorMode,
+		list_title: T,
+		list_items: &'a [TT],
+		details: Option<F>,
+	) -> Result<EditorAction>
+	where
+		T: AsRef<str>,
+		// TODO: why 2 bounds?
+		TT: AsRef<str>,
+		// TODO: F: Fn(Rect) -> Vec<(Box<dyn Widget>, Rect)>,
+		F: Fn(Rect) -> Vec<(Table<'a>, Rect)>,
+	{
+		// TODO: mv avoid allocating a whole vec?
+		let list = List::new({
+			let mut v = Vec::new();
+			for item in list_items {
+				v.push(ListItem::new(item.as_ref()));
 			}
-		}
-
-		let mut add_mode_buffer: Option<String> = if let CharacterMenuMode::Edit {
-			selected,
-			selected_field,
-		} = mode
-		{
-			let player = players.get(selected).unwrap();
-			Some(match selected_field {
-				PlayerField::Name => player.name.clone(),
-				PlayerField::Stat(i) => player
-					.stats
-					.get(
-						*stat_list
-							.sort_ids()
-							.get(*i)
-							.ok_or(anyhow!("Can't get Uid of stat {:?}", i))?,
-					)
-					.to_string(),
-				PlayerField::SkillName(i) => player.skills[*i].name.clone(),
-				PlayerField::SkillCD(i) => player.skills[*i].cooldown.to_string(),
-			})
-		} else {
-			None
-		};
-
-		let mut errors: Vec<String> = Vec::new();
-
-		let mut player_list_state = ListState::default();
-		let mut player_list_items = Vec::new();
-		let (player_pretty_list, player_list_id_map) = Term::get_pretty_player_list(players);
-
-		for (_, player) in player_pretty_list {
-			log::debug!("Adding player to the player list: {:#?}", player);
-			player_list_items.push(ListItem::new(player.name.as_str()));
-		}
-		log::debug!("Player item list vec len is {}", player_list_items.len());
-		// selected item by default
-		player_list_state.select_onum(match mode {
-			CharacterMenuMode::View { selected } => {
-				if let Some(id) = selected {
-					Some(id.to_order_num(&player_list_id_map).unwrap())
-				// if none is selected, select the first one if the list isn't empty
-				} else if !players.is_empty() {
-					Some(0.into())
-				} else {
-					// and don't select any if it is
-					None
-				}
-			}
-			CharacterMenuMode::Edit { selected, .. } => {
-				Some(selected.to_order_num(&player_list_id_map).unwrap())
-			}
-		});
-		log::debug!(
-			"Preselected player is at pos {:?}",
-			player_list_state.selected()
+			v
+		})
+		.highlight_symbol(">> ")
+		.block(
+			Block::default()
+				.title(list_title.as_ref())
+				.borders(Borders::ALL),
 		);
+		let mut list_state = ListState::default();
+		list_state.select_onum(match mode {
+			EditorMode::View { selected } => selected,
+			EditorMode::Edit { selected, .. } => Some(selected),
+		});
 
+		static STYLE_UNDERLINED: Lazy<Style> =
+			Lazy::new(|| Style::default().add_modifier(Modifier::UNDERLINED));
+		static DELIMITER: Lazy<Span> = Lazy::new(|| Span::raw(" | "));
+		// rendering loop
 		loop {
 			self.term.borrow_mut().draw(|frame| {
-				let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
-				let tables = Layout::default()
-					.direction(Direction::Horizontal)
-					.constraints([Constraint::Percentage(20), Constraint::Percentage(80)].as_ref())
-					.split(window_rect);
+				let (content_rect, statusbar_rect) = self.get_window_size(frame.size());
 
-				let player_list = List::new(player_list_items.clone())
-					.block(Block::default().title("Players").borders(Borders::ALL))
-					.highlight_symbol(">> ");
-
-				let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
-				let delimiter = Span::raw(" | ");
-
-				if errors.is_empty() {
-					let statusbar_text = match mode {
-						CharacterMenuMode::View { selected: _ } => Spans::from(vec![
+				// statusbar
+				let editor_mode_no_errors = if let EditorMode::Edit { error, .. } = &mode {
+					error.is_none()
+				} else {
+					true
+				};
+				if editor_mode_no_errors {
+					let statusbar_text = match &mode {
+						EditorMode::View { selected: _ } => Spans::from(vec![
 							" ".into(),
-							Span::styled("A", style_underlined),
+							Span::styled("A", *STYLE_UNDERLINED),
 							"dd".into(),
-							delimiter.clone(),
-							Span::styled("E", style_underlined),
+							DELIMITER.clone(),
+							Span::styled("E", *STYLE_UNDERLINED),
 							"dit".into(),
-							delimiter.clone(),
-							Span::styled("D", style_underlined),
+							DELIMITER.clone(),
+							Span::styled("D", *STYLE_UNDERLINED),
 							"elete".into(),
-							delimiter.clone(),
-							Span::styled("Q", style_underlined),
+							DELIMITER.clone(),
+							Span::styled("Q", *STYLE_UNDERLINED),
 							"uit".into(),
 						]),
-						CharacterMenuMode::Edit { .. } => {
-							Spans::from(" Edit mode. Press ESC to quit")
-						}
+						EditorMode::Edit { .. } => Spans::from(" Edit mode. Press ESC to quit"),
 					};
+
 					frame.render_widget(
 						Term::stylize_statusbar(statusbar_text, StatusBarType::Normal),
 						statusbar_rect,
 					);
 				} else {
-					frame.render_widget(
-						Term::stylize_statusbar(errors.pop().unwrap(), StatusBarType::Error),
-						statusbar_rect,
-					);
+					// always true here
+					if let EditorMode::Edit { error, .. } = &mode {
+						frame.render_widget(
+							Term::stylize_statusbar(
+								error.as_deref().unwrap(),
+								StatusBarType::Error,
+							),
+							statusbar_rect,
+						);
+					}
 				}
 
-				frame.render_stateful_widget(player_list, tables[0], &mut player_list_state);
+				let [list_rect, details_rect] = {
+					let tables = Layout::default()
+						.direction(Direction::Horizontal)
+						.constraints(
+							[Constraint::Percentage(20), Constraint::Percentage(80)].as_ref(),
+						)
+						.split(content_rect);
 
-				if let Some(num) = player_list_state.selected_onum() {
-					log::debug!("#{} is selected", num);
-					let selected_field =
-						if let CharacterMenuMode::Edit { selected_field, .. } = mode {
-							Some(selected_field)
-						} else {
-							None
-						};
-					let id = num.to_uid(&player_list_id_map).unwrap();
-					let selected_player = players.get(id).unwrap();
-					log::debug!("Got player #{}: {:#?}", id, selected_player);
-					let mut player_stats = Term::player_stats(
-						selected_player,
-						stat_list,
-						status_list,
-						tables[1],
-						Some(id),
-						selected_field,
-						add_mode_buffer.as_deref(),
-					);
-					while let Some((table, table_rect)) = player_stats.pop() {
-						frame.render_widget(table, table_rect);
+					<[Rect; 2]>::try_from(tables).ok().unwrap()
+				};
+
+				frame.render_stateful_widget(list.clone(), list_rect, &mut list_state);
+
+				if let Some(details) = details.as_ref() {
+					let mut widgets = details(details_rect);
+					while let Some((widget, widget_rect)) = widgets.pop() {
+						frame.render_widget(widget, widget_rect);
 					}
 				}
 			})?;
 
 			if let Event::Key(key) = read_event()? {
 				match mode {
-					CharacterMenuMode::View { selected: _ } => match key.code {
+					EditorMode::View { .. } => match key.code {
 						KeyCode::Char(ch) => match ch {
-							'a' => return Ok(CharacterMenuAction::Add),
-							'e' => {
-								if let Some(i) = player_list_state.selected_onum() {
-									return Ok(CharacterMenuAction::Edit(
-										i.to_uid(&player_list_id_map).unwrap(),
-									));
-								}
-							}
-							'd' => {
-								if let Some(i) = player_list_state.selected_onum() {
-									return Ok(CharacterMenuAction::Delete(
-										i.to_uid(&player_list_id_map).unwrap(),
-									));
-								}
-							}
-							'q' => return Ok(CharacterMenuAction::Quit),
+							'a' => return Ok(EditorAction::View(EditorActionViewMode::Add)),
+							'e' => return Ok(EditorAction::View(EditorActionViewMode::Edit)),
+							'd' => return Ok(EditorAction::View(EditorActionViewMode::Delete)),
+							'q' => return Ok(EditorAction::View(EditorActionViewMode::Quit)),
 							_ => (),
 						},
-						KeyCode::Down => {
-							player_list_state.next(player_list_items.len());
-						}
-						KeyCode::Up => {
-							player_list_state.prev(player_list_items.len());
-						}
-						KeyCode::Esc => return Ok(CharacterMenuAction::Quit),
+						KeyCode::Down => return Ok(EditorAction::View(EditorActionViewMode::Next)),
+
+						KeyCode::Up => return Ok(EditorAction::View(EditorActionViewMode::Prev)),
+
+						KeyCode::Esc => return Ok(EditorAction::View(EditorActionViewMode::Quit)),
 						_ => (),
 					},
-					CharacterMenuMode::Edit { selected_field, .. } => {
+					EditorMode::Edit { .. } => {
+						/*
 						macro_rules! validate {
 							() => {
 								if !validate_input(
@@ -1058,46 +1005,28 @@ impl Term {
 								}
 							};
 						}
+						*/
 
 						match key.code {
 							KeyCode::Char(ch) => {
-								add_mode_buffer.as_mut().unwrap().push(ch);
-								validate!();
+								//buffer.push(ch);
+								//validate!();
+								return Ok(EditorAction::Edit(EditorActionEditMode::Char(ch)));
 							}
 							KeyCode::Up => {
-								return Ok(CharacterMenuAction::Editing {
-									buffer: add_mode_buffer.unwrap(),
-									field_offset: Some(-1),
-								});
+								return Ok(EditorAction::Edit(EditorActionEditMode::Prev));
 							}
 							KeyCode::Down => {
-								return Ok(CharacterMenuAction::Editing {
-									buffer: add_mode_buffer.unwrap(),
-									field_offset: Some(1),
-								});
+								return Ok(EditorAction::Edit(EditorActionEditMode::Next));
 							}
 							KeyCode::Backspace => {
-								add_mode_buffer.as_mut().unwrap().pop();
-								validate!();
+								return Ok(EditorAction::Edit(EditorActionEditMode::Pop));
 							}
 							KeyCode::Enter => {
-								if !add_mode_buffer.as_ref().unwrap().is_empty() {
-									if let PlayerField::Stat(_) | PlayerField::SkillCD(_) =
-										selected_field
-									{
-										if !validate!() {
-											continue;
-										}
-									}
-
-									return Ok(CharacterMenuAction::Editing {
-										buffer: add_mode_buffer.unwrap(),
-										field_offset: None,
-									});
-								}
+								return Ok(EditorAction::Edit(EditorActionEditMode::DoneWithField));
 							}
 							KeyCode::Esc => {
-								return Ok(CharacterMenuAction::DoneEditing);
+								return Ok(EditorAction::Edit(EditorActionEditMode::Done));
 							}
 							_ => (),
 						}

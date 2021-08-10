@@ -1,3 +1,5 @@
+#![feature(try_blocks)]
+
 use anyhow::Result;
 //pub mod action_enums;
 mod action_enums;
@@ -11,9 +13,12 @@ mod stats;
 mod status;
 mod term;
 
-use action_enums::{CharacterMenuAction, GameAction, MainMenuAction};
+use action_enums::{
+	EditorAction, EditorActionEditMode, EditorActionViewMode, GameAction, MainMenuAction,
+};
 use crossterm::event::KeyCode;
 use entity_list::EntityList;
+use id::OrderNum;
 use id::Uid;
 use player::{Player, Players};
 use player_field::PlayerField;
@@ -25,7 +30,7 @@ use status::StatusCooldownType;
 use status::StatusList;
 use std::collections::HashMap;
 use term::list_state_ext::ListStateExt;
-use term::{CharacterMenuMode, Term};
+use term::{EditorMode, Term};
 use tui::widgets::ListState;
 
 /*
@@ -385,47 +390,83 @@ fn character_menu(
 	status_list: &StatusList,
 ) -> Result<()> {
 	log::debug!("In the character menu...");
-	let mut last_selected: Option<Uid> = None;
+	// TODO: create a UI agnostic list state tracker
+	let mut state = ListState::default();
 	loop {
-		match term.draw_character_menu(
-			CharacterMenuMode::View {
-				selected: last_selected,
+		let player_names_list = players
+			.sort_ids()
+			.iter()
+			.map(|x| players.get(*x).unwrap().name.as_str())
+			.collect::<Vec<&str>>();
+		match term.draw_editor(
+			EditorMode::View {
+				selected: state.selected_onum(),
 			},
-			players,
-			stat_list,
-			status_list,
+			"Players",
+			&player_names_list,
+			Some(|rect| {
+				if let Some(selected) = state.selected_onum() {
+					Term::player_stats(
+						// TODO: don't unwrap mindlessly
+						players
+							.get(*players.sort_ids().get(*selected).unwrap())
+							.unwrap(),
+						stat_list,
+						status_list,
+						rect,
+						None,
+						None,
+						None,
+					)
+				} else {
+					Vec::new()
+				}
+			}),
 		)? {
-			CharacterMenuAction::Add => {
+			EditorAction::View(EditorActionViewMode::Add) => {
+				state.select(Some(player_names_list.len()));
 				let id = players.push(Player::default());
-				log::debug!("Added a new player with id #{}", id);
+				log::debug!("Added a new player with #{:?}", id);
 				edit_player(term, players, id, stat_list, status_list)?;
 				// TODO: find out which pos the new player has in the list
 				//last_selected = Some(id);
-				last_selected = None;
 			}
-			CharacterMenuAction::Edit(num) => {
-				log::debug!("Editing player #{}", num);
-				edit_player(term, players, num, stat_list, status_list)?;
-				last_selected = Some(num);
-			}
-			// TODO: remove skills
-			CharacterMenuAction::Delete(num) => {
-				log::debug!("Confirming deletion of player #{}", num);
-				if term.messagebox_yn("Are you sure?")? {
-					log::debug!("Deleting #{}", num);
-					// TODO: fix logic. Use the actual id instead of order id
-					players.remove(num);
-					last_selected = None;
-				} else {
-					log::debug!("Not confirmed");
+			EditorAction::View(EditorActionViewMode::Edit) => {
+				if let Some(num) = state.selected_onum() {
+					log::debug!("Editing player #{:?}", num);
+					edit_player(
+						term,
+						players,
+						*players.sort_ids().get(*num).unwrap(),
+						stat_list,
+						status_list,
+					)?;
 				}
 			}
-			CharacterMenuAction::Quit { .. } => {
+			EditorAction::View(EditorActionViewMode::Delete) => {
+				if let Some(num) = state.selected_onum() {
+					log::debug!("Confirming deletion of player #{:?}", num);
+					if term.messagebox_yn("Are you sure?")? {
+						log::debug!("Deleting #{:?}", num);
+						state.next(player_names_list.len() - 1);
+						players.remove(*players.sort_ids().get(*num).unwrap());
+					} else {
+						log::debug!("Not confirmed");
+					}
+				}
+			}
+			EditorAction::View(EditorActionViewMode::Next) => {
+				state.next(player_names_list.len());
+			}
+			EditorAction::View(EditorActionViewMode::Prev) => {
+				state.prev(player_names_list.len());
+			}
+			EditorAction::View(EditorActionViewMode::Quit) => {
 				log::debug!("Closing the character menu");
 				break;
 			}
-			CharacterMenuAction::Editing { .. } | CharacterMenuAction::DoneEditing => {
-				log::error!("How did we even get here??? CMA::Editing or CMA::DoneEditing were somehow returned from the character menu not in editing mode. Something went terribly wrong...");
+			EditorAction::Edit(_) => {
+				log::error!("How did we even get here??? EditorAction::Edit was somehow returned from the editor not in editing mode. Something went terribly wrong...");
 				unreachable!();
 			}
 		}
@@ -444,7 +485,43 @@ fn edit_player(
 ) -> Result<()> {
 	log::debug!("Editing player #{}", id);
 	let mut selected_field = PlayerField::Name; // TODO: maybe use something like new()?
+	let mut buffer = None;
+	let mut error = None;
 	loop {
+		if buffer.is_none() {
+			buffer = try {
+				match selected_field {
+					PlayerField::Name => players.get(id)?.name.clone(),
+					PlayerField::Stat(num) => players
+						.get(id)?
+						.stats
+						.get(*stat_list.sort_ids().get(*num)?)
+						.to_string(),
+					PlayerField::SkillName(num) => players
+						.get(id)?
+						.skills
+						.get(*num)
+						.map(|x| x.name.clone())
+						.unwrap_or_default(),
+					PlayerField::SkillCD(num) => players
+						.get(id)?
+						.skills
+						.get(*num)
+						.map(|x| x.cooldown.to_string())
+						.unwrap_or_default(),
+				}
+			};
+			// if still empty for some reason -> create an empty string
+			buffer = Some(buffer.unwrap_or_default());
+		}
+		let player_names_list = players
+			.sort_ids()
+			.iter()
+			// TODO: avoid cloning
+			//.map(|x| players.get(*x).unwrap().name.as_str())
+			.map(|x| players.get(*x).unwrap().name.clone())
+			.collect::<Vec<String>>();
+
 		// init fields if they don't exist
 		match selected_field {
 			PlayerField::SkillName(skill_id) | PlayerField::SkillCD(skill_id) => {
@@ -457,19 +534,66 @@ fn edit_player(
 			_ => (),
 		}
 
-		match term.draw_character_menu(
-			CharacterMenuMode::Edit {
-				selected: id,
-				selected_field,
+		match term.draw_editor(
+			EditorMode::Edit {
+				// TODO: select the actual player
+				selected: OrderNum(
+					players
+						.sort_ids()
+						.iter()
+						.enumerate()
+						.find_map(|(i, &x)| if x == id { Some(i) } else { None })
+						.unwrap(),
+				),
+				error: error.clone(),
 			},
-			players,
-			stat_list,
-			status_list,
+			"Players",
+			&player_names_list,
+			Some(|rect| {
+				Term::player_stats(
+					// TODO: don't unwrap mindlessly
+					players.get(id).unwrap(),
+					stat_list,
+					status_list,
+					rect,
+					Some(id),
+					Some(selected_field),
+					Some(buffer.as_deref().unwrap()),
+				)
+			}),
 		)? {
-			CharacterMenuAction::Editing {
-				buffer,
-				field_offset,
-			} => {
+			EditorAction::Edit(EditorActionEditMode::Char(ch)) => {
+				let buffer = buffer.as_mut().unwrap();
+				buffer.push(ch);
+				if let PlayerField::Stat(_) | PlayerField::SkillCD(_) = selected_field {
+					error = if buffer.parse::<i64>().is_err() {
+						Some(format!("{} is not a valid number", buffer))
+					} else {
+						None
+					}
+				}
+			}
+			EditorAction::Edit(EditorActionEditMode::Pop) => {
+				let buffer = buffer.as_mut().unwrap();
+				buffer.pop();
+				if let PlayerField::Stat(_) | PlayerField::SkillCD(_) = selected_field {
+					error = if buffer.parse::<i64>().is_err() {
+						Some(format!("{} is not a valid number", buffer))
+					} else {
+						None
+					}
+				}
+			}
+			EditorAction::Edit(EditorActionEditMode::Next) => {
+				selected_field = selected_field.next(stat_list);
+				buffer = None;
+			}
+			EditorAction::Edit(EditorActionEditMode::Prev) => {
+				selected_field = selected_field.prev(stat_list);
+				buffer = None;
+			}
+			EditorAction::Edit(EditorActionEditMode::DoneWithField) => {
+				let buff_str = buffer.as_mut().unwrap();
 				let player = get_player_mut!(players, id);
 				match selected_field {
 					PlayerField::Name => {
@@ -477,24 +601,18 @@ fn edit_player(
 							"Editing player #{} name: from {} to {}",
 							id,
 							player.name,
-							buffer
+							buff_str
 						);
-						if !buffer.is_empty() {
-							let _ = std::mem::replace(&mut player.name, buffer);
-
-							// TODO: modify inplace
-							selected_field = match field_offset.unwrap_or(1) {
-								1 => selected_field.next(stat_list),
-								-1 => selected_field.prev(stat_list),
-								_ => selected_field,
-							}
+						if buff_str.is_empty() {
+							continue;
 						}
+						player.name = buff_str.clone();
 					}
 					// TODO: maybe try to integrate stat id together with selected id in the enum?
 					PlayerField::Stat(selected) => {
 						let stat_id = *stat_list.sort_ids().get(*selected).unwrap();
 
-						if let Ok(buffer) = buffer
+						if let Ok(parsed) = buff_str
 							.parse::<i32>()
 							//.map_err(|e| log::error!("Error parsing new {:?} value: {}", stat, e))
 							.map_err(|e| {
@@ -506,14 +624,11 @@ fn edit_player(
 								id,
 								//stat,
 								stat_id,
-								buffer
+								parsed
 							);
-							player.stats.set(stat_id, buffer);
-							selected_field = match field_offset.unwrap_or(1) {
-								1 => selected_field.next(stat_list),
-								-1 => selected_field.prev(stat_list),
-								_ => selected_field,
-							}
+							player.stats.set(stat_id, parsed);
+						} else {
+							continue;
 						}
 					}
 					PlayerField::SkillName(skill_id) => {
@@ -523,17 +638,12 @@ fn edit_player(
 							id,
 							skill_id,
 							skill_name,
-							buffer
+							buff_str
 						);
-						let _ = std::mem::replace(skill_name, buffer);
-						selected_field = match field_offset.unwrap_or(1) {
-							1 => selected_field.next(stat_list),
-							-1 => selected_field.prev(stat_list),
-							_ => selected_field,
-						}
+						*skill_name = buff_str.clone();
 					}
 					PlayerField::SkillCD(skill_id) => {
-						if let Ok(buffer) = buffer.parse::<u32>().map_err(|e| {
+						if let Ok(parsed) = buff_str.parse::<u32>().map_err(|e| {
 							log::error!("Error parsing new skill #{} CD value: {}", skill_id, e)
 						}) {
 							let skill_cd = &mut player.skills[*skill_id].cooldown;
@@ -542,20 +652,17 @@ fn edit_player(
 								id,
 								skill_id,
 								skill_cd,
-								buffer
+								parsed
 							);
-							player.skills[*skill_id].cooldown = buffer;
-						}
-						selected_field = match field_offset.unwrap_or(1) {
-							1 => selected_field.next(stat_list),
-							-1 => selected_field.prev(stat_list),
-							_ => selected_field,
+							player.skills[*skill_id].cooldown = parsed;
 						}
 					}
 				}
+				buffer = None;
+				selected_field = selected_field.next(stat_list);
 			}
 			// TODO: properly check for empty buffer in player and skill names
-			CharacterMenuAction::DoneEditing => {
+			EditorAction::Edit(EditorActionEditMode::Done) => {
 				let player = get_player_mut!(players, id);
 				log::debug!("Done editing {}", player.name);
 				if let Some(skill) = player.skills.last() {
@@ -566,8 +673,8 @@ fn edit_player(
 				}
 				break;
 			}
-			_ => {
-				log::error!("This should have never been reached. Somehow the CM in editing mode return an action other than CMA::Editing or CMD::DoneEditing");
+			EditorAction::View(_) => {
+				log::error!("This should have never been reached. Somehow the editor in editing mode returned a View action");
 				unreachable!();
 			}
 		}

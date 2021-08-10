@@ -1,4 +1,3 @@
-use crate::id::Uid;
 use crate::status::StatusCooldownType;
 
 pub enum MainMenuAction {
@@ -23,14 +22,25 @@ pub enum GameAction {
 	Quit,
 }
 
-pub enum CharacterMenuAction {
+pub enum EditorAction {
+	View(EditorActionViewMode),
+	Edit(EditorActionEditMode),
+}
+
+pub enum EditorActionViewMode {
+	Next,
+	Prev,
 	Add,
-	Edit(Uid),
-	Editing {
-		buffer: String,
-		field_offset: Option<i8>,
-	},
-	DoneEditing,
-	Delete(Uid),
+	Edit,
+	Delete,
 	Quit,
+}
+
+pub enum EditorActionEditMode {
+	Char(char),
+	Pop,
+	Next,
+	Prev,
+	DoneWithField,
+	Done,
 }
