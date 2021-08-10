@@ -375,14 +375,12 @@ impl Term {
 		Ok(())
 	}
 
-	pub fn draw_main_menu(&self) -> Result<MainMenuAction> {
+	pub fn draw_menu<T>(&self, items: &[&str], statusbar_text: T) -> Result<Option<usize>>
+	where
+		T: AsRef<str>,
+	{
 		self.term.borrow_mut().clear()?;
-		let items = [
-			"Start game",
-			"Manage characters",
-			"Change player order",
-			"Save and quit",
-		];
+
 		let mut list_state = ListState::default();
 		list_state.select(Some(0));
 		loop {
@@ -411,28 +409,21 @@ impl Term {
 				);
 				frame.render_stateful_widget(list, menu_location, &mut list_state);
 				frame.render_widget(
-					Term::stylize_statusbar(
-						format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION")),
-						StatusBarType::Normal,
-					),
+					Term::stylize_statusbar(statusbar_text.as_ref(), StatusBarType::Normal),
 					statusbar_rect,
 				);
 			})?;
 
 			if let Event::Key(key) = read_event()? {
 				match key.code {
-					KeyCode::Esc => {
-						if self.messagebox_yn("Are you sure you want to quit?")? {
-							return Ok(MainMenuAction::Quit);
-						}
-					}
+					KeyCode::Esc => return Ok(None),
 					KeyCode::Char(ch) => match ch {
-						'1' => return Ok(MainMenuAction::Play),
-						'2' => return Ok(MainMenuAction::Edit),
-						'3' => return Ok(MainMenuAction::ReorderPlayers),
-						'4' | 'q' => {
-							if self.messagebox_yn("Are you sure you want to quit?")? {
-								return Ok(MainMenuAction::Quit);
+						'0'..='9' => {
+							let i = ch.to_digit(10).unwrap() as usize;
+							if let Some(id) = i.checked_sub(1) {
+								if id < items.len() {
+									return Ok(Some(id));
+								}
 							}
 						}
 						_ => (),
@@ -445,19 +436,40 @@ impl Term {
 					}
 					KeyCode::Enter => {
 						if let Some(i) = list_state.selected() {
-							return match i {
-								// TODO: dedup
-								0 => Ok(MainMenuAction::Play),
-								1 => Ok(MainMenuAction::Edit),
-								2 => Ok(MainMenuAction::ReorderPlayers),
-								3 => Ok(MainMenuAction::Quit),
-								_ => unreachable!(),
-							};
+							assert!(i < items.len());
+							return Ok(Some(i));
 						}
 					}
 					_ => (),
 				}
 			}
+		}
+	}
+
+	pub fn draw_main_menu(&self) -> Result<MainMenuAction> {
+		loop {
+			let items = [
+				"Start game",
+				"Manage characters",
+				"Change player order",
+				"Save and quit",
+			];
+
+			let statusbar_text = format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION"));
+
+			return Ok(match self.draw_menu(&items, statusbar_text)? {
+				Some(0) => MainMenuAction::Play,
+				Some(1) => MainMenuAction::Edit,
+				Some(2) => MainMenuAction::ReorderPlayers,
+				Some(3) | None => {
+					if self.messagebox_yn("Are you sure you want to quit?")? {
+						MainMenuAction::Quit
+					} else {
+						continue;
+					}
+				}
+				_ => unreachable!(),
+			});
 		}
 	}
 
