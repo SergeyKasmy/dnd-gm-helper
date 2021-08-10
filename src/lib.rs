@@ -29,7 +29,6 @@ use skill::Skill;
 use stats::StatList;
 use status::StatusCooldownType;
 use status::StatusList;
-use std::collections::HashMap;
 use term::list_state_ext::ListStateExt;
 use term::{EditorMode, Term};
 use tui::widgets::ListState;
@@ -157,9 +156,7 @@ fn start() -> Result<()> {
 		map.insert(Uid(5), "Charisma".to_string());
 		StatList::new(map)
 	};
-	*/
 
-	// TODO: unhardcode
 	state.status_list = {
 		let mut map = HashMap::new();
 		map.insert(Uid(0), "Discharge".to_string());
@@ -174,6 +171,7 @@ fn start() -> Result<()> {
 		map.insert(Uid(9), "Stun".to_string());
 		StatusList::new(map)
 	};
+	*/
 
 	if !state.players.is_empty() && state.order.is_empty() {
 		state.order = state.players.sort_ids().iter().map(|id| *id).collect();
@@ -217,7 +215,7 @@ fn start() -> Result<()> {
 			}
 			MainMenuAction::Settings => match term.draw_settings_menu()? {
 				SettingsAction::EditStats => statlist_menu(&term, &mut state.stat_list)?,
-				SettingsAction::EditStatuses => statuses_editor(),
+				SettingsAction::EditStatuses => statuslist_menu(&term, &mut state.status_list)?,
 				SettingsAction::GoBack => continue,
 			},
 			MainMenuAction::Quit => break,
@@ -787,7 +785,6 @@ fn statlist_menu(ui: &Term, stat_list: &mut StatList) -> Result<()> {
 			},
 			"Stats",
 			&stat_names_list,
-			// TODO
 			None::<fn(_) -> _>,
 		)? {
 			EditorAction::View(EditorActionViewMode::Add) => {
@@ -857,7 +854,7 @@ fn edit_stat(ui: &Term, stat_list: &mut StatList, id: Uid) -> Result<()> {
 
 		match ui.draw_editor(
 			EditorMode::Edit {
-				// TODO: select the actual player
+				// TODO: select the actual stat
 				selected: OrderNum(
 					stat_list
 						.sort_ids()
@@ -901,6 +898,135 @@ fn edit_stat(ui: &Term, stat_list: &mut StatList, id: Uid) -> Result<()> {
 	log::debug!("Exiting out of the statlist editor...");
 	Ok(())
 }
-fn statuses_editor() {
-	todo!();
+fn statuslist_menu(ui: &Term, status_list: &mut StatusList) -> Result<()> {
+	log::debug!("In the statuslist menu...");
+	// TODO: create a UI agnostic list state tracker
+	// TODO: preselect the first
+	let mut state = ListState::default();
+	state.next(status_list.len());
+	loop {
+		let status_names_list = status_list
+			.sort_ids()
+			.iter()
+			.map(|x| status_list.get(*x).unwrap().as_str())
+			.collect::<Vec<&str>>();
+		match ui.draw_editor(
+			EditorMode::View {
+				selected: state.selected_onum(),
+			},
+			"Statuses",
+			&status_names_list,
+			None::<fn(_) -> _>,
+		)? {
+			EditorAction::View(EditorActionViewMode::Add) => {
+				state.select(Some(status_list.len()));
+				let id = status_list.push(String::new());
+				log::debug!("Added a new status with #{:?}", id);
+				edit_status(ui, status_list, id)?;
+				// TODO: find out which pos the new stat has in the list
+				//last_selected = Some(id);
+			}
+			EditorAction::View(EditorActionViewMode::Edit) => {
+				if let Some(num) = state.selected_onum() {
+					log::debug!("Editing status #{:?}", num);
+					edit_status(ui, status_list, *status_list.sort_ids().get(*num).unwrap())?;
+				}
+			}
+			EditorAction::View(EditorActionViewMode::Delete) => {
+				if let Some(num) = state.selected_onum() {
+					log::debug!("Confirming deletion of status #{:?}", num);
+					if ui.messagebox_yn("Are you sure?")? {
+						log::debug!("Deleting #{:?}", num);
+						state.next(status_names_list.len() - 1);
+						status_list.remove(*status_list.sort_ids().get(*num).unwrap());
+					} else {
+						log::debug!("Not confirmed");
+					}
+				}
+			}
+			EditorAction::View(EditorActionViewMode::Next) => {
+				state.next(status_names_list.len());
+			}
+			EditorAction::View(EditorActionViewMode::Prev) => {
+				state.prev(status_names_list.len());
+			}
+			EditorAction::View(EditorActionViewMode::Quit) => {
+				log::debug!("Closing the character menu");
+				break;
+			}
+			EditorAction::Edit(_) => {
+				log::error!("How did we even get here??? EditorAction::Edit was somehow returned from the editor not in editing mode. Something went terribly wrong...");
+				unreachable!();
+			}
+		}
+	}
+
+	log::debug!("Exiting the character menu...");
+	Ok(())
+}
+
+// TODO: combile stat and status menu and editors
+fn edit_status(ui: &Term, status_list: &mut StatusList, id: Uid) -> Result<()> {
+	log::debug!("Editing status #{}", id);
+	let mut buffer = None;
+	loop {
+		buffer = Some(buffer.unwrap_or(status_list.get(id).unwrap().clone()));
+		let status_names_list = status_list
+			.sort_ids()
+			.iter()
+			// TODO: avoid cloning
+			.map(|x| {
+				if *x != id {
+					status_list.get(*x).unwrap().clone()
+				} else {
+					buffer.as_ref().unwrap().clone()
+				}
+			})
+			.collect::<Vec<String>>();
+
+		match ui.draw_editor(
+			EditorMode::Edit {
+				// TODO: select the actual status
+				selected: OrderNum(
+					status_list
+						.sort_ids()
+						.iter()
+						.enumerate()
+						.find_map(|(i, &x)| if x == id { Some(i) } else { None })
+						.unwrap(),
+				),
+				error: None,
+			},
+			"Statuses",
+			&status_names_list,
+			None::<fn(_) -> _>,
+		)? {
+			EditorAction::Edit(EditorActionEditMode::Char(ch)) => {
+				let buffer = buffer.as_mut().unwrap();
+				buffer.push(ch);
+			}
+			EditorAction::Edit(EditorActionEditMode::Pop) => {
+				let buffer = buffer.as_mut().unwrap();
+				buffer.pop();
+			}
+			// TODO: properly check for empty buffer in player and skill names
+			EditorAction::Edit(
+				EditorActionEditMode::DoneWithField
+				| EditorActionEditMode::Done
+				| EditorActionEditMode::Next
+				| EditorActionEditMode::Prev,
+			) => {
+				log::debug!("Done editing {}", buffer.as_ref().unwrap());
+				*status_list.get_mut(id).unwrap() = buffer.unwrap();
+				break;
+			}
+			EditorAction::View(_) => {
+				log::error!("This should have never been reached. Somehow the editor in editing mode returned a View action");
+				unreachable!();
+			}
+		}
+	}
+
+	log::debug!("Exiting out of the statlist editor...");
+	Ok(())
 }
