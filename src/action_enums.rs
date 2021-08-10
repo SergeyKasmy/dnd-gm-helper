@@ -2,9 +2,16 @@ use crate::status::StatusCooldownType;
 
 pub enum MainMenuAction {
 	Play,
-	Edit,
+	EditPlayers,
 	ReorderPlayers,
+	Settings,
 	Quit,
+}
+
+pub enum SettingsAction {
+	EditStats,
+	EditStatuses,
+	GoBack,
 }
 
 pub enum GameAction {

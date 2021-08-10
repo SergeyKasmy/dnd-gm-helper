@@ -15,6 +15,7 @@ mod term;
 
 use action_enums::{
 	EditorAction, EditorActionEditMode, EditorActionViewMode, GameAction, MainMenuAction,
+	SettingsAction,
 };
 use crossterm::event::KeyCode;
 use entity_list::EntityList;
@@ -197,7 +198,7 @@ fn start() -> Result<()> {
 					&state.status_list,
 				)?;
 			}
-			MainMenuAction::Edit => character_menu(
+			MainMenuAction::EditPlayers => character_menu(
 				&term,
 				&mut state.players,
 				&state.stat_list,
@@ -212,6 +213,11 @@ fn start() -> Result<()> {
 				}
 				state.order = reorder_players(&term, &state.order, &mut state.players)?
 			}
+			MainMenuAction::Settings => match term.draw_settings_menu()? {
+				SettingsAction::EditStats => stats_editor(),
+				SettingsAction::EditStatuses => statuses_editor(),
+				SettingsAction::GoBack => continue,
+			},
 			MainMenuAction::Quit => break,
 		}
 	}
@@ -758,4 +764,11 @@ fn reorder_players(
 	}
 
 	Ok(player_list.into_iter().map(|(id, _)| id).collect())
+}
+
+fn stats_editor() {
+	todo!();
+}
+fn statuses_editor() {
+	todo!();
 }

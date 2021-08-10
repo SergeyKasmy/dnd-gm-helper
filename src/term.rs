@@ -2,6 +2,7 @@ pub mod list_state_ext;
 
 use crate::action_enums::{
 	EditorAction, EditorActionEditMode, EditorActionViewMode, GameAction, MainMenuAction,
+	SettingsAction,
 };
 use crate::entity_list::EntityList;
 use crate::id::{OrderNum, Uid};
@@ -426,6 +427,7 @@ impl Term {
 								}
 							}
 						}
+						'q' => return Ok(None),
 						_ => (),
 					},
 					KeyCode::Down => {
@@ -447,21 +449,23 @@ impl Term {
 	}
 
 	pub fn draw_main_menu(&self) -> Result<MainMenuAction> {
+		let items = [
+			"Start game",
+			"Manage characters",
+			"Change player order",
+			"Settings",
+			"Save and quit",
+		];
+
+		let statusbar_text = format!(" dnd-gm-helper v{}", env!("CARGO_PKG_VERSION"));
+
 		loop {
-			let items = [
-				"Start game",
-				"Manage characters",
-				"Change player order",
-				"Save and quit",
-			];
-
-			let statusbar_text = format!("dnd-gm-helper v{}", env!("CARGO_PKG_VERSION"));
-
-			return Ok(match self.draw_menu(&items, statusbar_text)? {
+			return Ok(match self.draw_menu(&items, statusbar_text.as_str())? {
 				Some(0) => MainMenuAction::Play,
-				Some(1) => MainMenuAction::Edit,
+				Some(1) => MainMenuAction::EditPlayers,
 				Some(2) => MainMenuAction::ReorderPlayers,
-				Some(3) | None => {
+				Some(3) => MainMenuAction::Settings,
+				Some(4) | None => {
 					if self.messagebox_yn("Are you sure you want to quit?")? {
 						MainMenuAction::Quit
 					} else {
@@ -471,6 +475,19 @@ impl Term {
 				_ => unreachable!(),
 			});
 		}
+	}
+
+	pub fn draw_settings_menu(&self) -> Result<SettingsAction> {
+		let items = ["Edit Stats", "Edit Statuses", "Go back..."];
+
+		let statusbar_text = " Settings";
+
+		Ok(match self.draw_menu(&items, statusbar_text)? {
+			Some(0) => SettingsAction::EditStats,
+			Some(1) => SettingsAction::EditStatuses,
+			Some(2) | None => SettingsAction::GoBack,
+			_ => unreachable!(),
+		})
 	}
 
 	pub fn draw_game(
