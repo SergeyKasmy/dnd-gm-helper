@@ -788,7 +788,7 @@ fn statlist_menu(ui: &Term, stat_list: &mut StatList) -> Result<()> {
 			"Stats",
 			&stat_names_list,
 			// TODO
-			Some(|_| Vec::new()),
+			None::<fn(_) -> _>,
 		)? {
 			EditorAction::View(EditorActionViewMode::Add) => {
 				state.select(Some(stat_names_list.len()));
@@ -870,7 +870,7 @@ fn edit_stat(ui: &Term, stat_list: &mut StatList, id: Uid) -> Result<()> {
 			},
 			"Stats",
 			&stat_names_list,
-			Some(|_| Vec::new()),
+			None::<fn(_) -> _>,
 		)? {
 			EditorAction::Edit(EditorActionEditMode::Char(ch)) => {
 				let buffer = buffer.as_mut().unwrap();

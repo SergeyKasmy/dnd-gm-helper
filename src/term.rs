@@ -979,14 +979,18 @@ impl Term {
 				}
 
 				let [list_rect, details_rect] = {
-					let tables = Layout::default()
-						.direction(Direction::Horizontal)
-						.constraints(
-							[Constraint::Percentage(20), Constraint::Percentage(80)].as_ref(),
-						)
-						.split(content_rect);
+					if details.is_some() {
+						let tables = Layout::default()
+							.direction(Direction::Horizontal)
+							.constraints(
+								[Constraint::Percentage(20), Constraint::Percentage(80)].as_ref(),
+							)
+							.split(content_rect);
 
-					<[Rect; 2]>::try_from(tables).ok().unwrap()
+						<[Rect; 2]>::try_from(tables).ok().unwrap()
+					} else {
+						[content_rect, Rect::default()]
+					}
 				};
 
 				frame.render_stateful_widget(list.clone(), list_rect, &mut list_state);
