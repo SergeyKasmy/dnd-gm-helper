@@ -146,7 +146,7 @@ fn start() -> Result<()> {
 		.ok_or(anyhow::Error::msg("Game not found"))?
 		.1;
 
-	// TODO: unhardcode these
+	/*
 	state.stat_list = {
 		let mut map = HashMap::new();
 		map.insert(Uid(0), "Strength".to_string());
@@ -157,7 +157,9 @@ fn start() -> Result<()> {
 		map.insert(Uid(5), "Charisma".to_string());
 		StatList::new(map)
 	};
+	*/
 
+	// TODO: unhardcode
 	state.status_list = {
 		let mut map = HashMap::new();
 		map.insert(Uid(0), "Discharge".to_string());
@@ -214,7 +216,7 @@ fn start() -> Result<()> {
 				state.order = reorder_players(&term, &state.order, &mut state.players)?
 			}
 			MainMenuAction::Settings => match term.draw_settings_menu()? {
-				SettingsAction::EditStats => stats_editor(),
+				SettingsAction::EditStats => statlist_menu(&term, &mut state.stat_list)?,
 				SettingsAction::EditStatuses => statuses_editor(),
 				SettingsAction::GoBack => continue,
 			},
@@ -398,6 +400,7 @@ fn character_menu(
 	log::debug!("In the character menu...");
 	// TODO: create a UI agnostic list state tracker
 	let mut state = ListState::default();
+	state.next(players.len());
 	loop {
 		let player_names_list = players
 			.sort_ids()
@@ -766,8 +769,137 @@ fn reorder_players(
 	Ok(player_list.into_iter().map(|(id, _)| id).collect())
 }
 
-fn stats_editor() {
-	todo!();
+fn statlist_menu(ui: &Term, stat_list: &mut StatList) -> Result<()> {
+	log::debug!("In the statlist menu...");
+	// TODO: create a UI agnostic list state tracker
+	// TODO: preselect the first
+	let mut state = ListState::default();
+	state.next(stat_list.len());
+	loop {
+		let stat_names_list = stat_list
+			.sort_ids()
+			.iter()
+			.map(|x| stat_list.get(*x).unwrap().as_str())
+			.collect::<Vec<&str>>();
+		match ui.draw_editor(
+			EditorMode::View {
+				selected: state.selected_onum(),
+			},
+			"Stats",
+			&stat_names_list,
+			// TODO
+			Some(|_| Vec::new()),
+		)? {
+			EditorAction::View(EditorActionViewMode::Add) => {
+				state.select(Some(stat_names_list.len()));
+				let id = stat_list.push(String::new());
+				log::debug!("Added a new stat with #{:?}", id);
+				edit_stat(ui, stat_list, id)?;
+				// TODO: find out which pos the new stat has in the list
+				//last_selected = Some(id);
+			}
+			EditorAction::View(EditorActionViewMode::Edit) => {
+				if let Some(num) = state.selected_onum() {
+					log::debug!("Editing stat #{:?}", num);
+					edit_stat(ui, stat_list, *stat_list.sort_ids().get(*num).unwrap())?;
+				}
+			}
+			EditorAction::View(EditorActionViewMode::Delete) => {
+				if let Some(num) = state.selected_onum() {
+					log::debug!("Confirming deletion of stat #{:?}", num);
+					if ui.messagebox_yn("Are you sure?")? {
+						log::debug!("Deleting #{:?}", num);
+						state.next(stat_names_list.len() - 1);
+						stat_list.remove(*stat_list.sort_ids().get(*num).unwrap());
+					} else {
+						log::debug!("Not confirmed");
+					}
+				}
+			}
+			EditorAction::View(EditorActionViewMode::Next) => {
+				state.next(stat_names_list.len());
+			}
+			EditorAction::View(EditorActionViewMode::Prev) => {
+				state.prev(stat_names_list.len());
+			}
+			EditorAction::View(EditorActionViewMode::Quit) => {
+				log::debug!("Closing the character menu");
+				break;
+			}
+			EditorAction::Edit(_) => {
+				log::error!("How did we even get here??? EditorAction::Edit was somehow returned from the editor not in editing mode. Something went terribly wrong...");
+				unreachable!();
+			}
+		}
+	}
+
+	log::debug!("Exiting the character menu...");
+	Ok(())
+}
+
+fn edit_stat(ui: &Term, stat_list: &mut StatList, id: Uid) -> Result<()> {
+	log::debug!("Editing stat #{}", id);
+	let mut buffer = None;
+	loop {
+		buffer = Some(buffer.unwrap_or(stat_list.get(id).unwrap().clone()));
+		let stat_names_list = stat_list
+			.sort_ids()
+			.iter()
+			// TODO: avoid cloning
+			.map(|x| {
+				if *x != id {
+					stat_list.get(*x).unwrap().clone()
+				} else {
+					buffer.as_ref().unwrap().clone()
+				}
+			})
+			.collect::<Vec<String>>();
+
+		match ui.draw_editor(
+			EditorMode::Edit {
+				// TODO: select the actual player
+				selected: OrderNum(
+					stat_list
+						.sort_ids()
+						.iter()
+						.enumerate()
+						.find_map(|(i, &x)| if x == id { Some(i) } else { None })
+						.unwrap(),
+				),
+				error: None,
+			},
+			"Stats",
+			&stat_names_list,
+			Some(|_| Vec::new()),
+		)? {
+			EditorAction::Edit(EditorActionEditMode::Char(ch)) => {
+				let buffer = buffer.as_mut().unwrap();
+				buffer.push(ch);
+			}
+			EditorAction::Edit(EditorActionEditMode::Pop) => {
+				let buffer = buffer.as_mut().unwrap();
+				buffer.pop();
+			}
+			// TODO: properly check for empty buffer in player and skill names
+			EditorAction::Edit(
+				EditorActionEditMode::DoneWithField
+				| EditorActionEditMode::Done
+				| EditorActionEditMode::Next
+				| EditorActionEditMode::Prev,
+			) => {
+				log::debug!("Done editing {}", buffer.as_ref().unwrap());
+				*stat_list.get_mut(id).unwrap() = buffer.unwrap();
+				break;
+			}
+			EditorAction::View(_) => {
+				log::error!("This should have never been reached. Somehow the editor in editing mode returned a View action");
+				unreachable!();
+			}
+		}
+	}
+
+	log::debug!("Exiting out of the statlist editor...");
+	Ok(())
 }
 fn statuses_editor() {
 	todo!();
