@@ -5,9 +5,8 @@ use crate::stats::Stats;
 use crate::status::Status;
 use crate::status::StatusCooldownType;
 use crate::status::Statuses;
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
-use std::collections::HashMap;
 
 pub type Hp = u16;
 
@@ -90,56 +89,26 @@ impl Player {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Players {
 	//#[serde(flatten)]
-	map: HashMap<Uid, Player>,
-
-	#[serde(skip)]
-	sorted_ids: RefCell<Option<Vec<Uid>>>,
+	map: IndexMap<Uid, Player>,
 }
 
 impl EntityList for Players {
 	type Entity = Player;
 
-	fn new(map: HashMap<Uid, Self::Entity>) -> Self {
-		Self {
-			map,
-			sorted_ids: RefCell::new(None),
-		}
+	fn new(map: IndexMap<Uid, Self::Entity>) -> Self {
+		Self { map }
 	}
 
-	fn get_map(&self) -> &HashMap<Uid, Self::Entity> {
+	fn get_map(&self) -> &IndexMap<Uid, Self::Entity> {
 		&self.map
 	}
 
-	fn get_map_mut(&mut self) -> &mut HashMap<Uid, Self::Entity> {
+	fn get_map_mut(&mut self) -> &mut IndexMap<Uid, Self::Entity> {
 		&mut self.map
 	}
 
-	fn sort_ids(&self) -> Vec<Uid> {
-		if self.sorted_ids.borrow().is_none() {
-			log::debug!("Sorting player list");
-			*self.sorted_ids.borrow_mut() = Some({
-				let mut unsorted: Vec<Uid> = self.map.iter().map(|(id, _)| *id).collect();
-				unsorted.sort_by(|a, b| {
-					self.map
-						.get(&a)
-						.unwrap()
-						.name
-						.cmp(&self.map.get(&b).unwrap().name)
-				});
-				unsorted
-			});
-		}
-		match &*self.sorted_ids.borrow() {
-			Some(ids) => ids.clone(),
-			None => {
-				log::error!("Somehow the sorted list of player ids is None even though we should've just created it");
-				unreachable!();
-			}
-		}
-	}
-
-	fn invalidate_sorted_ids(&self) {
-		*self.sorted_ids.borrow_mut() = None;
+	fn sort(&mut self) {
+		self.map.sort_by(|_, a, _, b| a.name.cmp(&b.name));
 	}
 }
 
@@ -147,8 +116,7 @@ impl EntityList for Players {
 impl Default for Players {
 	fn default() -> Self {
 		Players {
-			map: HashMap::new(),
-			sorted_ids: RefCell::new(None),
+			map: IndexMap::new(),
 		}
 	}
 }

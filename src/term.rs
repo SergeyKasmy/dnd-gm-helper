@@ -16,7 +16,6 @@ use anyhow::Result;
 use crossterm::event::{read as read_event, Event, KeyCode};
 use once_cell::sync::Lazy;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::io::{stdout, Stdout};
 use tui::{
@@ -54,20 +53,6 @@ impl Term {
 		Ok(Term {
 			term: RefCell::new(Terminal::new(CrosstermBackend::new(stdout()))?),
 		})
-	}
-
-	fn get_pretty_player_list(players: &Players) -> (Vec<(Uid, &Player)>, HashMap<OrderNum, Uid>) {
-		let pretty_list: Vec<(Uid, &Player)> = players
-			.sort_ids()
-			.iter()
-			.map(|&id| (id, players.get(id).unwrap()))
-			.collect();
-		let mut id_map: HashMap<OrderNum, Uid> = HashMap::new();
-		for (i, (id, _)) in pretty_list.iter().enumerate() {
-			id_map.insert(i.into(), *id);
-		}
-
-		(pretty_list, id_map)
 	}
 
 	fn get_window_size(&self, window: Rect) -> (Rect, Rect) {
@@ -603,7 +588,7 @@ impl Term {
 
 	pub fn player_stats<'a>(
 		player: &'a Player,
-		stat_list: &StatList,
+		stat_list: &'a StatList,
 		status_list: &StatusList,
 		rect: Rect,
 		player_id: Option<Uid>,
@@ -636,7 +621,7 @@ impl Term {
 
 		let mut rows_stats = Vec::new();
 		{
-			for (i, &stat_id) in stat_list.sort_ids().iter().enumerate() {
+			for (i, (&stat_id, stat)) in stat_list.get_map().iter().enumerate() {
 				// TODO: avoid to_string()'ing everything
 				// TODO: make this actually readable and easy to understand
 				let (style, stat_text) = match (selected, selected_str) {
@@ -665,7 +650,8 @@ impl Term {
 				};
 				rows_stats.push(
 					Row::new::<[Cell; 2]>([
-						stat_list.get(stat_id).unwrap().to_string().into(),
+						//stat_list.get(stat_id).unwrap().to_string().into(),
+						stat.as_str().into(),
 						stat_text.into(),
 					])
 					.style(style),
@@ -725,9 +711,7 @@ impl Term {
 
 		let mut rows_statuses = Vec::new();
 
-		for &id in player.statuses.sort_ids().iter() {
-			let status = player.statuses.get(id).unwrap();
-			// TODO: implement Display
+		for (_, status) in player.statuses.get_map().iter() {
 			let name = format!("{}", status_list.get(status.status_type).unwrap());
 			rows_statuses.push(Row::new::<[Cell; 2]>([
 				name.into(),
@@ -822,9 +806,9 @@ impl Term {
 
 	pub fn choose_status(&self, status_list: &StatusList) -> Result<Option<Status>> {
 		let status_list_names = status_list
-			.sort_ids()
+			.get_map()
 			.iter()
-			.map(|x| status_list.get(*x).unwrap())
+			.map(|(_, x)| x)
 			.collect::<Vec<&String>>();
 		let status_type =
 			match self.messagebox_with_options("Choose a status", &status_list_names, true)? {
@@ -883,16 +867,21 @@ impl Term {
 	}
 
 	pub fn pick_player<'a>(&self, players: &'a mut Players) -> Result<Option<&'a Player>> {
-		let (player_list, id_map) = Term::get_pretty_player_list(players);
-		// TODO: avoid collecting twice
-		let list: Vec<&str> = player_list.iter().map(|(_, x)| x.name.as_str()).collect();
+		let player_list = players
+			.get_map()
+			.iter()
+			.map(|(_, x)| x.name.as_str())
+			.collect::<Vec<&str>>();
 		return Ok(
-			match self.messagebox_with_options("Pick a player", &list, true)? {
-				Some(num) => Some(players.get(num.to_uid(&id_map).unwrap()).unwrap()),
+			match self.messagebox_with_options("Pick a player", &player_list, true)? {
+				Some(num) => Some(players.get_map().get_index(*num).unwrap().1),
 				None => None,
 			},
 		);
 	}
+
+	// TODO: implement "simple editor" that will act as an editor for both stats and statuses (and
+	// maybe items???)
 
 	pub fn draw_editor<'a, T, TT, F>(
 		&self,
