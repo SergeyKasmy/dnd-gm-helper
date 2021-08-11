@@ -19,15 +19,19 @@ pub enum PlayerState {
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct Player {
-	id: Option<Uid>,
+	// TODO: tmp pub
+	pub id: Option<Uid>,
 	// permanent state
 	pub name: String,
 	pub stats: Stats,
-	max_hp: Hp,
+	// TODO: tmp pub
+	pub max_hp: Hp,
 
 	// temporary state
-	hp: Hp,
-	money: i64,
+	// TODO: tmp pub
+	pub hp: Hp,
+	// TODO: tmp pub
+	pub money: i64,
 	pub skills: Vec<Skill>,
 	pub statuses: Statuses,
 }

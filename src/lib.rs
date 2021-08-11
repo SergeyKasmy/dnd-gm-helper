@@ -1,8 +1,7 @@
-// TODO: use HashSet with nested Uid inside the struct inside of HashMaps
-// implement Hash and friends for Uid. Reference: https://www.reddit.com/r/learnrust/comments/gxqpk7/idiomatic_way_to_store_struct_in_hashmap_by_id/ft4rkwl/?utm_source=reddit&utm_medium=web2x&context=3
 #![feature(try_blocks)]
+// TMP
+#![feature(exact_size_is_empty)]
 
-use anyhow::Result;
 //pub mod action_enums;
 mod action_enums;
 mod entity;
@@ -19,6 +18,7 @@ use action_enums::{
 	EditorAction, EditorActionEditMode, EditorActionViewMode, GameAction, MainMenuAction,
 	SettingsAction,
 };
+use anyhow::Result;
 use crossterm::event::KeyCode;
 use entity::EntityList;
 use id::OrderNum;
@@ -29,11 +29,12 @@ use player_field::PlayerField;
 use serde::Deserialize;
 use serde::Serialize;
 use skill::Skill;
-use stats::StatDef;
 use stats::StatList;
+use stats::Stats;
+use status::Status;
 use status::StatusCooldownType;
-use status::StatusDef;
 use status::StatusList;
+use status::Statuses;
 use term::list_state_ext::ListStateExt;
 use term::{EditorMode, Term};
 use tui::widgets::ListState;
@@ -84,6 +85,7 @@ pub fn run() -> Result<()> {
 }
 
 fn start() -> Result<()> {
+	let debug_add = !std::env::args().skip(1).take(1).is_empty();
 	let term = Term::new()?;
 	let mut games: Vec<(String, GameState)> = Vec::new();
 
@@ -116,6 +118,52 @@ fn start() -> Result<()> {
 
 	// sort games by name
 	games.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+	if debug_add {
+		let mut players = Players::default();
+		let mut stat_list = StatList::default();
+		let mut status_list = StatusList::default();
+
+		for i in 0..5 {
+			let mut skills = Vec::new();
+			let mut stats = Stats::default();
+			let mut statuses = Statuses::default();
+			for k in 0..4 {
+				skills.push(Skill::new(format!("Testing skill {}", i), k * k));
+				stats.set(format!("Testing stat {}", i), (i * k) as i32);
+				statuses.push(Status::new(
+					format!("Testing status {}", i),
+					StatusCooldownType::Manual,
+					k * k,
+				));
+			}
+			players.push(Player {
+				id: None,
+				hp: 0,
+				max_hp: 0,
+				money: 0,
+				name: format!("Testing player #{}", i),
+				skills,
+				stats,
+				statuses,
+			});
+			stat_list.insert(format!("Testing stat {}", i));
+			status_list.insert(format!("Testing status {}", i));
+		}
+
+		let game_state = GameState {
+			order: players
+				.get_map()
+				.iter()
+				.map(|(id, _)| *id)
+				.collect::<Vec<Uid>>(),
+			players,
+			stat_list,
+			status_list,
+		};
+
+		games.insert(0, ("Testing game".to_string(), game_state));
+	}
 
 	let game_num = {
 		let mut options = games
@@ -494,7 +542,7 @@ fn edit_player(
 					PlayerField::Stat(num) => players
 						.get(id)?
 						.stats
-						.get(*stat_list.get_map().get_index(*num)?.0)
+						.get(stat_list.get(num).unwrap())
 						.to_string(),
 					PlayerField::SkillName(num) => players
 						.get(id)?
@@ -601,23 +649,22 @@ fn edit_player(
 					}
 					// TODO: maybe try to integrate stat id together with selected id in the enum?
 					PlayerField::Stat(selected) => {
-						let stat_id = *stat_list.get_map().get_index(*selected).unwrap().0;
+						let stat = stat_list.get(selected).unwrap();
 
 						if let Ok(parsed) = buff_str
 							.parse::<i32>()
 							//.map_err(|e| log::error!("Error parsing new {:?} value: {}", stat, e))
 							.map_err(|e| {
-								log::error!("Error parsing new stat #{} value: {}", stat_id, e)
+								log::error!("Error parsing new stat {} value: {}", stat, e)
 							}) {
 							log::debug!(
 								//"Chaning player #{} stat {:?}: from {} to {}",
-								"Chaning player #{} stat #{} to {}",
+								"Chaning player #{} stat {} to {}",
 								id,
-								//stat,
-								stat_id,
+								stat,
 								parsed
 							);
-							player.stats.set(stat_id, parsed);
+							player.stats.set(stat, parsed);
 						} else {
 							continue;
 						}
@@ -758,35 +805,26 @@ fn statlist_menu(ui: &Term, stat_list: &mut StatList) -> Result<()> {
 	let mut state = ListState::default();
 	state.next(stat_list.len());
 	loop {
-		let stat_names_list = stat_list
-			.get_map()
-			.iter()
-			.map(|(_, x)| x.name.as_str())
-			.collect::<Vec<&str>>();
 		match ui.draw_editor(
 			EditorMode::View {
 				selected: state.selected_onum(),
 			},
 			"Stats",
-			&stat_names_list,
+			&stat_list.get_names(),
 			None::<fn(_) -> _>,
 		)? {
 			EditorAction::View(EditorActionViewMode::Add) => {
-				state.select(Some(stat_names_list.len()));
-				let id = stat_list.push(StatDef::default());
-				log::debug!("Added a new stat with #{:?}", id);
-				edit_stat(ui, stat_list, id)?;
+				state.select(Some(stat_list.len()));
+				log::debug!("Added a new stat");
+				edit_stat(ui, stat_list, None)?;
 				// TODO: find out which pos the new stat has in the list
 				//last_selected = Some(id);
 			}
 			EditorAction::View(EditorActionViewMode::Edit) => {
 				if let Some(num) = state.selected_onum() {
-					log::debug!("Editing stat #{:?}", num);
-					edit_stat(
-						ui,
-						stat_list,
-						*stat_list.get_map().get_index(*num).unwrap().0,
-					)?;
+					log::debug!("Editing status #{:?}", num);
+					let stat_name = stat_list.get(num).unwrap().to_string();
+					edit_stat(ui, stat_list, Some(&stat_name))?;
 				}
 			}
 			EditorAction::View(EditorActionViewMode::Delete) => {
@@ -794,18 +832,19 @@ fn statlist_menu(ui: &Term, stat_list: &mut StatList) -> Result<()> {
 					log::debug!("Confirming deletion of stat #{:?}", num);
 					if ui.messagebox_yn("Are you sure?")? {
 						log::debug!("Deleting #{:?}", num);
-						state.next(stat_names_list.len() - 1);
-						stat_list.remove(*stat_list.get_map().get_index(*num).unwrap().0);
+						state.next(stat_list.len() - 1);
+						let stat_name = stat_list.get(num).unwrap().to_string();
+						stat_list.remove(&stat_name);
 					} else {
 						log::debug!("Not confirmed");
 					}
 				}
 			}
 			EditorAction::View(EditorActionViewMode::Next) => {
-				state.next(stat_names_list.len());
+				state.next(stat_list.len());
 			}
 			EditorAction::View(EditorActionViewMode::Prev) => {
-				state.prev(stat_names_list.len());
+				state.prev(stat_list.len());
 			}
 			EditorAction::View(EditorActionViewMode::Quit) => {
 				log::debug!("Closing the character menu");
@@ -822,40 +861,56 @@ fn statlist_menu(ui: &Term, stat_list: &mut StatList) -> Result<()> {
 	Ok(())
 }
 
-fn edit_stat(ui: &Term, stat_list: &mut StatList, id: Uid) -> Result<()> {
-	log::debug!("Editing stat #{}", id);
-	let mut buffer = None;
-	loop {
-		buffer = Some(buffer.unwrap_or(stat_list.get(id).unwrap().name.clone()));
-		let stat_names_list = stat_list
-			.get_map()
-			.iter()
-			// TODO: avoid cloning
-			.map(|(&mapped_id, x)| {
-				if mapped_id != id {
-					x.name.clone()
-				} else {
-					buffer.as_ref().unwrap().clone()
-				}
-			})
-			.collect::<Vec<String>>();
+fn edit_stat(ui: &Term, stat_list: &mut StatList, name: Option<&str>) -> Result<()> {
+	if let Some(name) = name {
+		log::debug!("Editing stat #{}", name);
+	} else {
+		log::debug!("Adding a stat");
+	}
 
+	// TODO: dedup
+	let selected = match name {
+		Some(name) => stat_list.get_index(name).unwrap(),
+		None => OrderNum(stat_list.len()),
+	};
+
+	let mut buffer = match name {
+		Some(name) => name.to_string(),
+		None => String::new(),
+	};
+	loop {
+		let stats_list_names = {
+			let mut names: Vec<String> = stat_list
+				.get_names()
+				.iter()
+				.enumerate()
+				.map(|(num, x)| {
+					if num != *selected {
+						x.to_string()
+					} else {
+						buffer.clone()
+					}
+				})
+				.collect();
+			if let None = name {
+				names.push(buffer.clone());
+			}
+			names
+		};
 		match ui.draw_editor(
 			EditorMode::Edit {
-				// TODO: select the actual stat
-				selected: OrderNum(stat_list.get_map().get_index_of(&id).unwrap()),
+				// TODO: select the actual status
+				selected,
 				error: None,
 			},
 			"Stats",
-			&stat_names_list,
+			&stats_list_names,
 			None::<fn(_) -> _>,
 		)? {
 			EditorAction::Edit(EditorActionEditMode::Char(ch)) => {
-				let buffer = buffer.as_mut().unwrap();
 				buffer.push(ch);
 			}
 			EditorAction::Edit(EditorActionEditMode::Pop) => {
-				let buffer = buffer.as_mut().unwrap();
 				buffer.pop();
 			}
 			// TODO: properly check for empty buffer in player and skill names
@@ -865,8 +920,11 @@ fn edit_stat(ui: &Term, stat_list: &mut StatList, id: Uid) -> Result<()> {
 				| EditorActionEditMode::Next
 				| EditorActionEditMode::Prev,
 			) => {
-				log::debug!("Done editing {:?}", buffer.as_ref().unwrap());
-				stat_list.get_mut(id).unwrap().name = buffer.unwrap();
+				log::debug!("Done editing {}", buffer);
+				if let Some(name) = name {
+					stat_list.remove(name);
+				}
+				stat_list.insert(buffer);
 				break;
 			}
 			EditorAction::View(_) => {
@@ -886,11 +944,7 @@ fn statuslist_menu(ui: &Term, status_list: &mut StatusList) -> Result<()> {
 	let mut state = ListState::default();
 	state.next(status_list.len());
 	loop {
-		let status_names_list = status_list
-			.get_map()
-			.iter()
-			.map(|(_, st)| st.name.as_str())
-			.collect::<Vec<&str>>();
+		let status_names_list = status_list.get_names();
 		match ui.draw_editor(
 			EditorMode::View {
 				selected: state.selected_onum(),
@@ -901,20 +955,16 @@ fn statuslist_menu(ui: &Term, status_list: &mut StatusList) -> Result<()> {
 		)? {
 			EditorAction::View(EditorActionViewMode::Add) => {
 				state.select(Some(status_list.len()));
-				let id = status_list.push(StatusDef::default());
-				log::debug!("Added a new status with #{:?}", id);
-				edit_status(ui, status_list, id)?;
+				log::debug!("Added a new status");
+				edit_status(ui, status_list, None)?;
 				// TODO: find out which pos the new stat has in the list
 				//last_selected = Some(id);
 			}
 			EditorAction::View(EditorActionViewMode::Edit) => {
 				if let Some(num) = state.selected_onum() {
 					log::debug!("Editing status #{:?}", num);
-					edit_status(
-						ui,
-						status_list,
-						*status_list.get_map().get_index(*num).unwrap().0,
-					)?;
+					let status_name = status_list.get(num).unwrap().to_string();
+					edit_status(ui, status_list, Some(&status_name))?;
 				}
 			}
 			EditorAction::View(EditorActionViewMode::Delete) => {
@@ -923,7 +973,8 @@ fn statuslist_menu(ui: &Term, status_list: &mut StatusList) -> Result<()> {
 					if ui.messagebox_yn("Are you sure?")? {
 						log::debug!("Deleting #{:?}", num);
 						state.next(status_names_list.len() - 1);
-						status_list.remove(*status_list.get_map().get_index(*num).unwrap().0);
+						let status_name = status_list.get(num).unwrap().to_string();
+						status_list.remove(&status_name);
 					} else {
 						log::debug!("Not confirmed");
 					}
@@ -951,40 +1002,56 @@ fn statuslist_menu(ui: &Term, status_list: &mut StatusList) -> Result<()> {
 }
 
 // TODO: combile stat and status menu and editors
-fn edit_status(ui: &Term, status_list: &mut StatusList, id: Uid) -> Result<()> {
-	log::debug!("Editing status #{}", id);
-	let mut buffer = None;
-	loop {
-		buffer = Some(buffer.unwrap_or(status_list.get(id).unwrap().name.clone()));
-		let status_names_list = status_list
-			.get_map()
-			.iter()
-			// TODO: avoid cloning
-			.map(|(&mapped_id, x)| {
-				if mapped_id != id {
-					x.name.clone()
-				} else {
-					buffer.as_ref().unwrap().clone()
-				}
-			})
-			.collect::<Vec<String>>();
+fn edit_status(ui: &Term, status_list: &mut StatusList, name: Option<&str>) -> Result<()> {
+	if let Some(name) = name {
+		log::debug!("Editing status #{}", name);
+	} else {
+		log::debug!("Adding a status");
+	}
 
+	// TODO: dedup
+	let selected = match name {
+		Some(name) => status_list.get_index(name).unwrap(),
+		None => OrderNum(status_list.len()),
+	};
+
+	let mut buffer = match name {
+		Some(name) => name.to_string(),
+		None => String::new(),
+	};
+	loop {
+		let status_list_names = {
+			let mut names: Vec<String> = status_list
+				.get_names()
+				.iter()
+				.enumerate()
+				.map(|(num, x)| {
+					if num != *selected {
+						x.to_string()
+					} else {
+						buffer.clone()
+					}
+				})
+				.collect();
+			if let None = name {
+				names.push(buffer.clone());
+			}
+			names
+		};
 		match ui.draw_editor(
 			EditorMode::Edit {
 				// TODO: select the actual status
-				selected: OrderNum(status_list.get_map().get_index_of(&id).unwrap()),
+				selected,
 				error: None,
 			},
 			"Statuses",
-			&status_names_list,
+			&status_list_names,
 			None::<fn(_) -> _>,
 		)? {
 			EditorAction::Edit(EditorActionEditMode::Char(ch)) => {
-				let buffer = buffer.as_mut().unwrap();
 				buffer.push(ch);
 			}
 			EditorAction::Edit(EditorActionEditMode::Pop) => {
-				let buffer = buffer.as_mut().unwrap();
 				buffer.pop();
 			}
 			// TODO: properly check for empty buffer in player and skill names
@@ -994,8 +1061,11 @@ fn edit_status(ui: &Term, status_list: &mut StatusList, id: Uid) -> Result<()> {
 				| EditorActionEditMode::Next
 				| EditorActionEditMode::Prev,
 			) => {
-				log::debug!("Done editing {}", buffer.as_ref().unwrap());
-				status_list.get_mut(id).unwrap().name = buffer.unwrap();
+				log::debug!("Done editing {}", buffer);
+				if let Some(name) = name {
+					status_list.remove(name);
+				}
+				status_list.insert(buffer);
 				break;
 			}
 			EditorAction::View(_) => {

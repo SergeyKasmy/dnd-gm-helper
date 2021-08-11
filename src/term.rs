@@ -621,7 +621,7 @@ impl Term {
 
 		let mut rows_stats = Vec::new();
 		{
-			for (i, (&stat_id, stat)) in stat_list.get_map().iter().enumerate() {
+			for (i, stat) in stat_list.iter().enumerate() {
 				// TODO: avoid to_string()'ing everything
 				// TODO: make this actually readable and easy to understand
 				let (style, stat_text) = match (selected, selected_str) {
@@ -630,28 +630,28 @@ impl Term {
 							if *selected == i {
 								(selected_style, string.to_string())
 							} else {
-								(Style::default(), player.stats.get(stat_id).to_string())
+								(Style::default(), player.stats.get(stat).to_string())
 							}
 						} else {
-							(Style::default(), player.stats.get(stat_id).to_string())
+							(Style::default(), player.stats.get(stat).to_string())
 						}
 					}
 					(_, _) => {
 						if let Some(PlayerField::Stat(selected)) = selected {
 							if *selected == i {
-								(selected_style, player.stats.get(stat_id).to_string())
+								(selected_style, player.stats.get(stat).to_string())
 							} else {
-								(Style::default(), player.stats.get(stat_id).to_string())
+								(Style::default(), player.stats.get(stat).to_string())
 							}
 						} else {
-							(Style::default(), player.stats.get(stat_id).to_string())
+							(Style::default(), player.stats.get(stat).to_string())
 						}
 					}
 				};
 				rows_stats.push(
 					Row::new::<[Cell; 2]>([
 						//stat_list.get(stat_id).unwrap().to_string().into(),
-						stat.name.as_str().into(),
+						stat.as_str().into(),
 						stat_text.into(),
 					])
 					.style(style),
@@ -712,9 +712,8 @@ impl Term {
 		let mut rows_statuses = Vec::new();
 
 		for (_, status) in player.statuses.get_map().iter() {
-			let name = format!("{}", status_list.get(status.status_type).unwrap().name);
 			rows_statuses.push(Row::new::<[Cell; 2]>([
-				name.into(),
+				status.status_type.as_str().into(),
 				format!(
 					"{} turns left ({:?})",
 					status.duration_left, status.status_cooldown_type
@@ -805,16 +804,14 @@ impl Term {
 	}
 
 	pub fn choose_status(&self, status_list: &StatusList) -> Result<Option<Status>> {
-		let status_list_names = status_list
-			.get_map()
-			.iter()
-			.map(|(_, x)| x.name.as_str())
-			.collect::<Vec<&str>>();
-		let status_type =
-			match self.messagebox_with_options("Choose a status", &status_list_names, true)? {
-				Some(num) => Uid(*num),
-				None => return Ok(None),
-			};
+		let status_type = match self.messagebox_with_options(
+			"Choose a status",
+			&status_list.get_names(),
+			true,
+		)? {
+			Some(num) => status_list.get(num).unwrap(),
+			None => return Ok(None),
+		};
 
 		let status_cooldown_type = match self.messagebox_with_options(
 			"Status cooldown type",
@@ -842,7 +839,7 @@ impl Term {
 		};
 
 		Ok(Some(Status::new(
-			status_type,
+			status_type.to_string(),
 			status_cooldown_type,
 			duration_left,
 		)))
