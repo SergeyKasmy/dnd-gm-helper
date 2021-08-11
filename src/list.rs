@@ -1,106 +1,90 @@
-// TODO: maybe use a generic struct instead of a trait????
 use crate::id::Id;
 use crate::id::OrderNum;
 use crate::id::Uid;
+use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 
-#[macro_export]
-macro_rules! id_list {
-    ($t:ty) => {
-        indexmap::IndexMap<Uid, $t>
-    }
+#[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(transparent)]
+pub struct IdList<T>
+where
+	T: Id, //where T: Id + Serialize + Deserialize
+{
+	// Not intended for end-user use, only for custom impl IdList<T>
+	pub list: IndexMap<Uid, T>,
 }
 
-pub trait IdListImpl {
-	type Value: Id;
+impl<T> IdList<T>
+where
+	T: Id,
+{
+	pub fn new(list: IndexMap<Uid, T>) -> Self {
+		Self { list }
+	}
 
-	fn new(list: id_list!(Self::Value)) -> Self;
-	fn get_list(&self) -> &id_list!(Self::Value);
-	fn get_list_mut(&mut self) -> &mut id_list!(Self::Value);
-}
-
-#[macro_export]
-macro_rules! impl_idlist_default {
-	($i:ident, $value_type:ty) => {
-		impl crate::list::IdListImpl for $i {
-			type Value = $value_type;
-
-			fn new(list: crate::id_list!(Self::Value)) -> Self {
-				Self { list }
-			}
-
-			fn get_list(&self) -> &crate::id_list!(Self::Value) {
-				&self.list
-			}
-
-			fn get_list_mut(&mut self) -> &mut crate::id_list!(Self::Value) {
-				&mut self.list
-			}
-		}
-	};
-}
-
-pub trait IdList: IdListImpl {
-	fn sort(&mut self);
-
-	fn get(&self, id: Uid) -> Option<&Self::Value> {
+	pub fn get(&self, id: Uid) -> Option<&T> {
 		// TODO: is it safe not to sort it after it may have been possible that the user changed
 		// the sorting property with get_map_mut()
 		//self.sort();
-		self.get_list().get(&id)
+		self.list.get(&id)
 	}
 
-	fn get_mut(&mut self, id: Uid) -> Option<&mut Self::Value> {
-		self.sort();
-		self.get_list_mut().get_mut(&id)
+	pub fn get_mut(&mut self, id: Uid) -> Option<&mut T> {
+		//self.sort();
+		self.list.get_mut(&id)
 	}
 
-	fn get_by_index(&self, num: OrderNum) -> Option<(&Uid, &Self::Value)> {
-		self.get_list().get_index(*num)
+	pub fn get_by_index(&self, num: OrderNum) -> Option<(&Uid, &T)> {
+		self.list.get_index(*num)
 	}
 
-	fn get_index_of(&self, id: Uid) -> Option<OrderNum> {
-		self.get_list().get_index_of(&id).map(|x| OrderNum(x))
+	pub fn get_index_of(&self, id: Uid) -> Option<OrderNum> {
+		self.list.get_index_of(&id).map(|x| OrderNum(x))
 	}
 
-	// TODO: don't allocate for no reason
-	//fn iter(&self) -> impl Iterator<Item = Self::Value> {
-	fn iter(&self) -> Box<dyn Iterator<Item = (&Uid, &Self::Value)> + '_> {
-		Box::new(self.get_list().iter())
+	pub fn iter(&self) -> impl Iterator<Item = (&Uid, &T)> {
+		self.list.iter()
 	}
 
-	fn push(&mut self, new_val: Self::Value) -> Uid {
-		let biggest_id = if let Some(num) = self.get_list().keys().max() {
+	pub fn push(&mut self, new_val: T) -> Uid {
+		let biggest_id = if let Some(num) = self.list.keys().max() {
 			*num + 1.into()
 		} else {
 			0.into()
 		};
 
 		self.insert(biggest_id, new_val);
-		self.sort();
+		//self.sort();
 		biggest_id
 	}
 
-	fn insert(&mut self, id: Uid, mut new_val: Self::Value) {
+	pub fn insert(&mut self, id: Uid, mut new_val: T) {
 		*new_val.id() = Some(id);
-		self.get_list_mut().insert(id, new_val);
-		self.sort();
+		self.list.insert(id, new_val);
+		//self.sort();
 	}
 
-	fn remove(&mut self, id: Uid) -> Option<(Uid, Self::Value)> {
-		let removed = self.get_list_mut().remove_entry(&id);
-		self.sort();
+	pub fn remove(&mut self, id: Uid) -> Option<(Uid, T)> {
+		let removed = self.list.remove_entry(&id);
+		//self.sort();
 		removed
 	}
 
-	fn clear(&mut self) {
-		self.get_list_mut().clear();
+	pub fn clear(&mut self) {
+		self.list.clear();
 	}
 
-	fn len(&self) -> usize {
-		self.get_list().len()
+	pub fn len(&self) -> usize {
+		self.list.len()
 	}
 
-	fn is_empty(&self) -> bool {
-		self.get_list().is_empty()
+	pub fn is_empty(&self) -> bool {
+		self.list.is_empty()
+	}
+}
+
+impl<T: Id> Default for IdList<T> {
+	fn default() -> Self {
+		Self::new(IndexMap::new())
 	}
 }

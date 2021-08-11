@@ -1,8 +1,6 @@
 use crate::id::OrderNum;
 use crate::id::Uid;
-use crate::id_list;
 use crate::impl_id_trait;
-use crate::impl_idlist_default;
 use crate::list::IdList;
 use anyhow::Result;
 use indexmap::IndexSet;
@@ -91,12 +89,7 @@ impl Status {
 	}
 }
 
-#[derive(Default, Serialize, Deserialize, Clone, Debug)]
-#[serde(transparent)]
-pub struct Statuses {
-	// TODO: rename to list
-	list: id_list!(Status),
-}
+pub type Statuses = IdList<Status>;
 
 impl Statuses {
 	pub fn drain_by_type(&mut self, status_type: StatusCooldownType) {
@@ -109,7 +102,7 @@ impl Statuses {
 		});
 		// remove all statuses that have run out = retain all statuses that haven't yet run out
 		self.list.retain(|_, status| status.duration_left > 0);
-		self.sort();
+		//self.sort();
 	}
 
 	// TODO: combine with the one from the above
@@ -126,11 +119,12 @@ impl Statuses {
 		Ok(())
 	}
 }
-impl_idlist_default!(Statuses, Status);
 
+/*
 impl IdList for Statuses {
 	fn sort(&mut self) {
 		self.list
 			.sort_by(|_, a, _, b| a.status_type.to_string().cmp(&b.status_type.to_string()));
 	}
 }
+*/

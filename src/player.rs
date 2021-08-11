@@ -1,7 +1,5 @@
 use crate::id::Uid;
-use crate::id_list;
 use crate::impl_id_trait;
-use crate::impl_idlist_default;
 use crate::list::IdList;
 use crate::skill::Skill;
 use crate::stats::Stats;
@@ -96,15 +94,12 @@ impl Player {
 	}
 }
 
-#[derive(Default, Serialize, Deserialize, Debug)]
-#[serde(transparent)]
-pub struct Players {
-	list: id_list!(Player),
-}
-impl_idlist_default!(Players, Player);
+pub type Players = IdList<Player>;
 
+/*
 impl IdList for Players {
 	fn sort(&mut self) {
 		self.list.sort_by(|_, a, _, b| a.name.cmp(&b.name));
 	}
 }
+*/
