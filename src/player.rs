@@ -1,5 +1,7 @@
-use crate::entity_list::EntityList;
+use crate::entity::{Entity, EntityList};
 use crate::id::Uid;
+use crate::impl_default_entitylist;
+use crate::impl_entity;
 use crate::skill::Skill;
 use crate::stats::Stats;
 use crate::status::Status;
@@ -17,6 +19,7 @@ pub enum PlayerState {
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct Player {
+	id: Option<Uid>,
 	// permanent state
 	pub name: String,
 	pub stats: Stats,
@@ -28,6 +31,7 @@ pub struct Player {
 	pub skills: Vec<Skill>,
 	pub statuses: Statuses,
 }
+impl_entity!(Player);
 
 impl Player {
 	pub fn turn(&mut self) {
@@ -86,37 +90,15 @@ impl Player {
 	}
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Default, Serialize, Deserialize, Debug)]
+#[serde(transparent)]
 pub struct Players {
-	//#[serde(flatten)]
 	map: IndexMap<Uid, Player>,
 }
 
 impl EntityList for Players {
-	type Entity = Player;
-
-	fn new(map: IndexMap<Uid, Self::Entity>) -> Self {
-		Self { map }
-	}
-
-	fn get_map(&self) -> &IndexMap<Uid, Self::Entity> {
-		&self.map
-	}
-
-	fn get_map_mut(&mut self) -> &mut IndexMap<Uid, Self::Entity> {
-		&mut self.map
-	}
-
+	impl_default_entitylist!(Player);
 	fn sort(&mut self) {
 		self.map.sort_by(|_, a, _, b| a.name.cmp(&b.name));
-	}
-}
-
-// TODO: maybe move this impls to a macro
-impl Default for Players {
-	fn default() -> Self {
-		Players {
-			map: IndexMap::new(),
-		}
 	}
 }

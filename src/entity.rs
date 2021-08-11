@@ -1,8 +1,23 @@
 use crate::id::Uid;
 use indexmap::IndexMap;
 
+pub trait Entity {
+	fn id(&mut self) -> &mut Option<Uid>;
+}
+
+#[macro_export]
+macro_rules! impl_entity {
+	($i:ident) => {
+		impl Entity for $i {
+			fn id(&mut self) -> &mut Option<Uid> {
+				&mut self.id
+			}
+		}
+	};
+}
+
 pub trait EntityList {
-	type Entity;
+	type Entity: Entity;
 
 	fn new(map: IndexMap<Uid, Self::Entity>) -> Self;
 	fn get_map(&self) -> &IndexMap<Uid, Self::Entity>;
@@ -34,7 +49,8 @@ pub trait EntityList {
 		biggest_id
 	}
 
-	fn insert(&mut self, id: Uid, new_val: Self::Entity) {
+	fn insert(&mut self, id: Uid, mut new_val: Self::Entity) {
+		*new_val.id() = Some(id);
 		self.get_map_mut().insert(id, new_val);
 		self.sort();
 	}
@@ -49,12 +65,6 @@ pub trait EntityList {
 		self.get_map_mut().clear();
 	}
 
-	/*
-	fn keys(&self) -> std::collections::hash_map::Keys<Uid, Self::Entity> {
-		self.get_map().keys()
-	}
-	*/
-
 	fn len(&self) -> usize {
 		self.get_map().len()
 	}
@@ -64,10 +74,21 @@ pub trait EntityList {
 	}
 }
 
-/*
-impl<T: EntityList> Default for T {
-	fn default() -> Self {
-		T::new(HashMap::new())
-	}
+#[macro_export]
+macro_rules! impl_default_entitylist {
+	($entity:ident) => {
+		type Entity = $entity;
+
+		fn new(map: IndexMap<Uid, Self::Entity>) -> Self {
+			Self { map }
+		}
+
+		fn get_map(&self) -> &IndexMap<Uid, Self::Entity> {
+			&self.map
+		}
+
+		fn get_map_mut(&mut self) -> &mut IndexMap<Uid, Self::Entity> {
+			&mut self.map
+		}
+	};
 }
-*/

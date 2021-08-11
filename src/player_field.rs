@@ -1,4 +1,4 @@
-use crate::entity_list::EntityList;
+use crate::entity::EntityList;
 use crate::id::OrderNum;
 use crate::stats::StatList;
 

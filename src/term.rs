@@ -4,7 +4,7 @@ use crate::action_enums::{
 	EditorAction, EditorActionEditMode, EditorActionViewMode, GameAction, MainMenuAction,
 	SettingsAction,
 };
-use crate::entity_list::EntityList;
+use crate::entity::EntityList;
 use crate::id::{OrderNum, Uid};
 use crate::player::{Player, Players};
 use crate::player_field::PlayerField;
@@ -651,7 +651,7 @@ impl Term {
 				rows_stats.push(
 					Row::new::<[Cell; 2]>([
 						//stat_list.get(stat_id).unwrap().to_string().into(),
-						stat.as_str().into(),
+						stat.name.as_str().into(),
 						stat_text.into(),
 					])
 					.style(style),
@@ -712,7 +712,7 @@ impl Term {
 		let mut rows_statuses = Vec::new();
 
 		for (_, status) in player.statuses.get_map().iter() {
-			let name = format!("{}", status_list.get(status.status_type).unwrap());
+			let name = format!("{}", status_list.get(status.status_type).unwrap().name);
 			rows_statuses.push(Row::new::<[Cell; 2]>([
 				name.into(),
 				format!(
@@ -808,8 +808,8 @@ impl Term {
 		let status_list_names = status_list
 			.get_map()
 			.iter()
-			.map(|(_, x)| x)
-			.collect::<Vec<&String>>();
+			.map(|(_, x)| x.name.as_str())
+			.collect::<Vec<&str>>();
 		let status_type =
 			match self.messagebox_with_options("Choose a status", &status_list_names, true)? {
 				Some(num) => Uid(*num),
@@ -841,11 +841,11 @@ impl Term {
 			}
 		};
 
-		Ok(Some(Status {
+		Ok(Some(Status::new(
 			status_type,
 			status_cooldown_type,
 			duration_left,
-		}))
+		)))
 	}
 
 	pub fn get_money_amount(&self) -> Result<i64> {

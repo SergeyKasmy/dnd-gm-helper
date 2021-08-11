@@ -1,39 +1,28 @@
-use crate::entity_list::EntityList;
+use crate::entity::{Entity, EntityList};
 use crate::id::Uid;
+use crate::impl_default_entitylist;
+use crate::impl_entity;
 use anyhow::Result;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+pub struct StatusDef {
+	id: Option<Uid>,
+	pub name: String,
+}
+impl_entity!(StatusDef);
+
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[serde(transparent)]
 pub struct StatusList {
-	//#[serde(flatten)]
-	map: IndexMap<Uid, String>,
+	map: IndexMap<Uid, StatusDef>,
 }
 
 impl EntityList for StatusList {
-	type Entity = String;
-
-	fn new(map: IndexMap<Uid, Self::Entity>) -> Self {
-		Self { map }
-	}
-
-	fn get_map(&self) -> &IndexMap<Uid, Self::Entity> {
-		&self.map
-	}
-
-	fn get_map_mut(&mut self) -> &mut IndexMap<Uid, Self::Entity> {
-		&mut self.map
-	}
-
+	impl_default_entitylist!(StatusDef);
 	fn sort(&mut self) {
-		self.map.sort_by(|_, a, _, b| a.cmp(b));
-	}
-}
-
-impl Default for StatusList {
-	fn default() -> Self {
-		Self::new(IndexMap::new())
+		self.map.sort_by(|_, a, _, b| a.name.cmp(&b.name));
 	}
 }
 
@@ -47,14 +36,27 @@ pub enum StatusCooldownType {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Status {
+	id: Option<Uid>,
 	pub status_type: Uid,
 	pub status_cooldown_type: StatusCooldownType,
 	pub duration_left: u32,
 }
+impl_entity!(Status);
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+impl Status {
+	pub fn new(status_type: Uid, status_cooldown_type: StatusCooldownType, duration: u32) -> Self {
+		Self {
+			id: None,
+			status_type,
+			status_cooldown_type,
+			duration_left: duration,
+		}
+	}
+}
+
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[serde(transparent)]
 pub struct Statuses {
-	//#[serde(flatten)]
 	map: IndexMap<Uid, Status>,
 }
 
@@ -88,28 +90,9 @@ impl Statuses {
 }
 
 impl EntityList for Statuses {
-	type Entity = Status;
-
-	fn new(map: IndexMap<Uid, Self::Entity>) -> Self {
-		Self { map }
-	}
-
-	fn get_map(&self) -> &IndexMap<Uid, Self::Entity> {
-		&self.map
-	}
-
-	fn get_map_mut(&mut self) -> &mut IndexMap<Uid, Self::Entity> {
-		&mut self.map
-	}
-
+	impl_default_entitylist!(Status);
 	fn sort(&mut self) {
 		self.map
 			.sort_by(|_, a, _, b| a.status_type.to_string().cmp(&b.status_type.to_string()));
-	}
-}
-
-impl Default for Statuses {
-	fn default() -> Self {
-		Self::new(IndexMap::new())
 	}
 }

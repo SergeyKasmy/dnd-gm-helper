@@ -1,18 +1,26 @@
-use crate::entity_list::EntityList;
+use crate::entity::{Entity, EntityList};
 use crate::id::Uid;
+use crate::impl_default_entitylist;
+use crate::impl_entity;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+pub struct StatDef {
+	id: Option<Uid>,
+	pub name: String,
+}
+impl_entity!(StatDef);
+
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct StatList {
-	// TODO: uncomment all serde(flatten) attrs when I figure out how to get rid of "invalid type: string "", expected usize" error
-	//#[serde(flatten)]
-	map: IndexMap<Uid, String>,
+	map: IndexMap<Uid, StatDef>,
 }
 
 impl StatList {
 	pub fn get_name(&self, id: Uid) -> Option<&str> {
-		Some(self.map.get(&id)?.as_str())
+		Some(self.map.get(&id)?.name.as_str())
 	}
 
 	pub fn contains(&self, id: Uid) -> bool {
@@ -21,28 +29,15 @@ impl StatList {
 }
 
 impl EntityList for StatList {
-	type Entity = String;
-
-	fn new(map: IndexMap<Uid, Self::Entity>) -> Self {
-		Self { map }
-	}
-
-	fn get_map(&self) -> &IndexMap<Uid, Self::Entity> {
-		&self.map
-	}
-
-	fn get_map_mut(&mut self) -> &mut IndexMap<Uid, Self::Entity> {
-		&mut self.map
-	}
-
+	impl_default_entitylist!(StatDef);
 	fn sort(&mut self) {
-		self.map.sort_by(|_, a, _, b| a.cmp(&b));
+		self.map.sort_by(|_, a, _, b| a.name.cmp(&b.name));
 	}
 }
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Stats {
-	//#[serde(flatten)]
 	map: IndexMap<Uid, i32>,
 }
 

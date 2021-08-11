@@ -5,7 +5,7 @@
 use anyhow::Result;
 //pub mod action_enums;
 mod action_enums;
-mod entity_list;
+mod entity;
 mod player;
 //pub mod player_field;
 mod id;
@@ -20,7 +20,7 @@ use action_enums::{
 	SettingsAction,
 };
 use crossterm::event::KeyCode;
-use entity_list::EntityList;
+use entity::EntityList;
 use id::OrderNum;
 use id::Uid;
 use indexmap::IndexMap;
@@ -29,8 +29,10 @@ use player_field::PlayerField;
 use serde::Deserialize;
 use serde::Serialize;
 use skill::Skill;
+use stats::StatDef;
 use stats::StatList;
 use status::StatusCooldownType;
+use status::StatusDef;
 use status::StatusList;
 use term::list_state_ext::ListStateExt;
 use term::{EditorMode, Term};
@@ -759,7 +761,7 @@ fn statlist_menu(ui: &Term, stat_list: &mut StatList) -> Result<()> {
 		let stat_names_list = stat_list
 			.get_map()
 			.iter()
-			.map(|(_, x)| x.as_str())
+			.map(|(_, x)| x.name.as_str())
 			.collect::<Vec<&str>>();
 		match ui.draw_editor(
 			EditorMode::View {
@@ -771,7 +773,7 @@ fn statlist_menu(ui: &Term, stat_list: &mut StatList) -> Result<()> {
 		)? {
 			EditorAction::View(EditorActionViewMode::Add) => {
 				state.select(Some(stat_names_list.len()));
-				let id = stat_list.push(String::new());
+				let id = stat_list.push(StatDef::default());
 				log::debug!("Added a new stat with #{:?}", id);
 				edit_stat(ui, stat_list, id)?;
 				// TODO: find out which pos the new stat has in the list
@@ -824,14 +826,14 @@ fn edit_stat(ui: &Term, stat_list: &mut StatList, id: Uid) -> Result<()> {
 	log::debug!("Editing stat #{}", id);
 	let mut buffer = None;
 	loop {
-		buffer = Some(buffer.unwrap_or(stat_list.get(id).unwrap().clone()));
+		buffer = Some(buffer.unwrap_or(stat_list.get(id).unwrap().name.clone()));
 		let stat_names_list = stat_list
 			.get_map()
 			.iter()
 			// TODO: avoid cloning
 			.map(|(&mapped_id, x)| {
 				if mapped_id != id {
-					x.clone()
+					x.name.clone()
 				} else {
 					buffer.as_ref().unwrap().clone()
 				}
@@ -863,8 +865,8 @@ fn edit_stat(ui: &Term, stat_list: &mut StatList, id: Uid) -> Result<()> {
 				| EditorActionEditMode::Next
 				| EditorActionEditMode::Prev,
 			) => {
-				log::debug!("Done editing {}", buffer.as_ref().unwrap());
-				*stat_list.get_mut(id).unwrap() = buffer.unwrap();
+				log::debug!("Done editing {:?}", buffer.as_ref().unwrap());
+				stat_list.get_mut(id).unwrap().name = buffer.unwrap();
 				break;
 			}
 			EditorAction::View(_) => {
@@ -887,7 +889,7 @@ fn statuslist_menu(ui: &Term, status_list: &mut StatusList) -> Result<()> {
 		let status_names_list = status_list
 			.get_map()
 			.iter()
-			.map(|(_, st)| st.as_str())
+			.map(|(_, st)| st.name.as_str())
 			.collect::<Vec<&str>>();
 		match ui.draw_editor(
 			EditorMode::View {
@@ -899,7 +901,7 @@ fn statuslist_menu(ui: &Term, status_list: &mut StatusList) -> Result<()> {
 		)? {
 			EditorAction::View(EditorActionViewMode::Add) => {
 				state.select(Some(status_list.len()));
-				let id = status_list.push(String::new());
+				let id = status_list.push(StatusDef::default());
 				log::debug!("Added a new status with #{:?}", id);
 				edit_status(ui, status_list, id)?;
 				// TODO: find out which pos the new stat has in the list
@@ -953,14 +955,14 @@ fn edit_status(ui: &Term, status_list: &mut StatusList, id: Uid) -> Result<()> {
 	log::debug!("Editing status #{}", id);
 	let mut buffer = None;
 	loop {
-		buffer = Some(buffer.unwrap_or(status_list.get(id).unwrap().clone()));
+		buffer = Some(buffer.unwrap_or(status_list.get(id).unwrap().name.clone()));
 		let status_names_list = status_list
 			.get_map()
 			.iter()
 			// TODO: avoid cloning
 			.map(|(&mapped_id, x)| {
 				if mapped_id != id {
-					x.clone()
+					x.name.clone()
 				} else {
 					buffer.as_ref().unwrap().clone()
 				}
@@ -993,7 +995,7 @@ fn edit_status(ui: &Term, status_list: &mut StatusList, id: Uid) -> Result<()> {
 				| EditorActionEditMode::Prev,
 			) => {
 				log::debug!("Done editing {}", buffer.as_ref().unwrap());
-				*status_list.get_mut(id).unwrap() = buffer.unwrap();
+				status_list.get_mut(id).unwrap().name = buffer.unwrap();
 				break;
 			}
 			EditorAction::View(_) => {
