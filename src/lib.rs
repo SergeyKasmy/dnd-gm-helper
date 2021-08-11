@@ -14,7 +14,6 @@ mod stats;
 mod status;
 mod term;
 
-use crate::list::IdList;
 use action_enums::{
 	EditorAction, EditorActionEditMode, EditorActionViewMode, GameAction, MainMenuAction,
 	SettingsAction,

@@ -1,61 +1,11 @@
-use crate::id::OrderNum;
 use crate::id::Uid;
 use crate::impl_id_trait;
 use crate::list::IdList;
+use crate::list::SetList;
 use anyhow::Result;
-use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
 
-#[derive(Default, Serialize, Deserialize, Clone, Debug)]
-#[serde(transparent)]
-pub struct StatusList {
-	list: IndexSet<String>,
-}
-
-/*
-impl EntityList for StatusList {
-	impl_default_entitylist!(StatusDef);
-	fn sort(&mut self) {
-		self.map.sort_by(|_, a, _, b| a.cmp(&b));
-	}
-}
-*/
-
-impl StatusList {
-	pub fn iter(&self) -> impl Iterator<Item = &String> {
-		self.list.iter()
-	}
-
-	// TODO: maybe there's a better way?
-	pub fn get(&self, num: OrderNum) -> Option<&str> {
-		self.get_names().get(*num).map(|x| *x)
-	}
-
-	pub fn get_names(&self) -> Vec<&str> {
-		self.list.iter().map(|x| x.as_str()).collect()
-	}
-
-	pub fn get_index(&self, name: &str) -> Option<OrderNum> {
-		self.list.get_full(name).map(|(id, _)| OrderNum(id))
-	}
-
-	pub fn insert(&mut self, name: String) {
-		self.list.insert(name);
-		self.sort();
-	}
-
-	pub fn remove<T: AsRef<str>>(&mut self, name: T) -> Option<String> {
-		self.list.shift_remove_full(name.as_ref()).map(|(_, s)| s)
-	}
-
-	pub fn len(&self) -> usize {
-		self.list.len()
-	}
-
-	pub fn sort(&mut self) {
-		self.list.sort_by(|a, b| a.cmp(b))
-	}
-}
+pub type StatusList = SetList<String>;
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub enum StatusCooldownType {
