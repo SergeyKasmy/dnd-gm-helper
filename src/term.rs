@@ -4,8 +4,8 @@ use crate::action_enums::{
 	EditorAction, EditorActionEditMode, EditorActionViewMode, GameAction, MainMenuAction,
 	SettingsAction,
 };
-use crate::entity::EntityList;
 use crate::id::{OrderNum, Uid};
+use crate::list::IdList;
 use crate::player::{Player, Players};
 use crate::player_field::PlayerField;
 use crate::skill::Skill;
@@ -711,7 +711,7 @@ impl Term {
 
 		let mut rows_statuses = Vec::new();
 
-		for (_, status) in player.statuses.get_map().iter() {
+		for (_, status) in player.statuses.iter() {
 			rows_statuses.push(Row::new::<[Cell; 2]>([
 				status.status_type.as_str().into(),
 				format!(
@@ -865,13 +865,12 @@ impl Term {
 
 	pub fn pick_player<'a>(&self, players: &'a mut Players) -> Result<Option<&'a Player>> {
 		let player_list = players
-			.get_map()
 			.iter()
 			.map(|(_, x)| x.name.as_str())
 			.collect::<Vec<&str>>();
 		return Ok(
 			match self.messagebox_with_options("Pick a player", &player_list, true)? {
-				Some(num) => Some(players.get_map().get_index(*num).unwrap().1),
+				Some(num) => Some(players.get_by_index(num).unwrap().1),
 				None => None,
 			},
 		);

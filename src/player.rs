@@ -1,13 +1,13 @@
-use crate::entity::{Entity, EntityList};
 use crate::id::Uid;
-use crate::impl_default_entitylist;
-use crate::impl_entity;
+use crate::id_list;
+use crate::impl_id_trait;
+use crate::impl_idlist_default;
+use crate::list::IdList;
 use crate::skill::Skill;
 use crate::stats::Stats;
 use crate::status::Status;
 use crate::status::StatusCooldownType;
 use crate::status::Statuses;
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 pub type Hp = u16;
@@ -19,25 +19,27 @@ pub enum PlayerState {
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct Player {
-	// TODO: tmp pub
-	pub id: Option<Uid>,
-	// permanent state
+	id: Option<Uid>,
 	pub name: String,
 	pub stats: Stats,
-	// TODO: tmp pub
-	pub max_hp: Hp,
+	max_hp: Hp,
 
-	// temporary state
-	// TODO: tmp pub
-	pub hp: Hp,
-	// TODO: tmp pub
-	pub money: i64,
+	hp: Hp,
+	money: i64,
 	pub skills: Vec<Skill>,
 	pub statuses: Statuses,
 }
-impl_entity!(Player);
+impl_id_trait!(Player);
 
 impl Player {
+	pub fn new(name: String, skills: Vec<Skill>) -> Self {
+		Self {
+			name,
+			skills,
+			..Default::default()
+		}
+	}
+
 	pub fn turn(&mut self) {
 		log::debug!("{}'s turn has ended", self.name);
 		self.skills.iter_mut().for_each(|skill| {
@@ -97,12 +99,12 @@ impl Player {
 #[derive(Default, Serialize, Deserialize, Debug)]
 #[serde(transparent)]
 pub struct Players {
-	map: IndexMap<Uid, Player>,
+	list: id_list!(Player),
 }
+impl_idlist_default!(Players, Player);
 
-impl EntityList for Players {
-	impl_default_entitylist!(Player);
+impl IdList for Players {
 	fn sort(&mut self) {
-		self.map.sort_by(|_, a, _, b| a.name.cmp(&b.name));
+		self.list.sort_by(|_, a, _, b| a.name.cmp(&b.name));
 	}
 }

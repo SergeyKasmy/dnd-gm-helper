@@ -51,3 +51,18 @@ impl OrderNum {
 		map.get(&self).map(|x| *x)
 	}
 }
+
+pub trait Id {
+	fn id(&mut self) -> &mut Option<Uid>;
+}
+
+#[macro_export]
+macro_rules! impl_id_trait {
+	($i:ident) => {
+		impl crate::id::Id for $i {
+			fn id(&mut self) -> &mut Option<Uid> {
+				&mut self.id
+			}
+		}
+	};
+}

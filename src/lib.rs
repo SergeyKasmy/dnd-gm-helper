@@ -4,7 +4,7 @@
 
 //pub mod action_enums;
 mod action_enums;
-mod entity;
+mod list;
 mod player;
 //pub mod player_field;
 mod id;
@@ -14,13 +14,13 @@ mod stats;
 mod status;
 mod term;
 
+use crate::list::IdList;
 use action_enums::{
 	EditorAction, EditorActionEditMode, EditorActionViewMode, GameAction, MainMenuAction,
 	SettingsAction,
 };
 use anyhow::Result;
 use crossterm::event::KeyCode;
-use entity::EntityList;
 use id::OrderNum;
 use id::Uid;
 use indexmap::IndexMap;
@@ -137,32 +137,22 @@ fn start() -> Result<()> {
 					k * k,
 				));
 			}
-			players.push(Player {
-				id: None,
-				hp: 0,
-				max_hp: 0,
-				money: 0,
-				name: format!("Testing player #{}", i),
-				skills,
-				stats,
-				statuses,
-			});
+			let mut player = Player::new(format!("Testing player #{}", i), skills);
+			player.stats = stats;
+			player.statuses = statuses;
+			players.push(player);
 			stat_list.insert(format!("Testing stat {}", i));
 			status_list.insert(format!("Testing status {}", i));
 		}
 
 		let game_state = GameState {
-			order: players
-				.get_map()
-				.iter()
-				.map(|(id, _)| *id)
-				.collect::<Vec<Uid>>(),
+			order: players.iter().map(|(id, _)| *id).collect::<Vec<Uid>>(),
 			players,
 			stat_list,
 			status_list,
 		};
 
-		games.insert(0, ("Testing game".to_string(), game_state));
+		games.insert(0, ("DEBUG".to_string(), game_state));
 	}
 
 	let game_num = {
@@ -220,7 +210,7 @@ fn start() -> Result<()> {
 	*/
 
 	if !state.players.is_empty() && state.order.is_empty() {
-		state.order = state.players.get_map().iter().map(|(id, _)| *id).collect();
+		state.order = state.players.iter().map(|(id, _)| *id).collect();
 	}
 
 	loop {
@@ -364,7 +354,6 @@ fn game_start(
 						log::debug!("Choosing which manual status to drain");
 						let statuses = &get_player!(players, id).statuses;
 						let manual_statuses = statuses
-							.get_map()
 							.iter()
 							.filter_map(|(&id, x)| {
 								if x.status_cooldown_type == StatusCooldownType::Manual {
@@ -443,7 +432,6 @@ fn character_menu(
 	state.next(players.len());
 	loop {
 		let player_names_list = players
-			.get_map()
 			.iter()
 			.map(|(_, pl)| pl.name.as_str())
 			.collect::<Vec<&str>>();
@@ -457,7 +445,7 @@ fn character_menu(
 				if let Some(selected) = state.selected_onum() {
 					Term::player_stats(
 						// TODO: don't unwrap mindlessly
-						players.get_map().get_index(*selected).unwrap().1,
+						players.get_by_index(selected).unwrap().1,
 						stat_list,
 						status_list,
 						rect,
@@ -484,7 +472,7 @@ fn character_menu(
 					edit_player(
 						term,
 						players,
-						*players.get_map().get_index(*num).unwrap().0,
+						*players.get_by_index(num).unwrap().0,
 						stat_list,
 						status_list,
 					)?;
@@ -496,7 +484,7 @@ fn character_menu(
 					if term.messagebox_yn("Are you sure?")? {
 						log::debug!("Deleting #{:?}", num);
 						state.next(player_names_list.len() - 1);
-						players.remove(*players.get_map().get_index(*num).unwrap().0);
+						players.remove(*players.get_by_index(num).unwrap().0);
 					} else {
 						log::debug!("Not confirmed");
 					}
@@ -575,7 +563,6 @@ fn edit_player(
 		}
 
 		let player_names_list = players
-			.get_map()
 			.iter()
 			.map(|(_, pl)| pl.name.as_str())
 			.collect::<Vec<&str>>();
@@ -583,7 +570,7 @@ fn edit_player(
 		match term.draw_editor(
 			EditorMode::Edit {
 				// TODO: select the actual player
-				selected: OrderNum(players.get_map().get_index_of(&id).unwrap()),
+				selected: players.get_index_of(id).unwrap(),
 				error: error.clone(),
 			},
 			"Players",
@@ -742,7 +729,6 @@ fn reorder_players(
 				// Reset is the last option, not an actual player name
 				if num == (options.len() - 1).into() {
 					player_list = players
-						.get_map()
 						.iter()
 						.map(|(id, pl)| (*id, pl.name.as_str()))
 						.collect();

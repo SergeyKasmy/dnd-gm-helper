@@ -1,10 +1,10 @@
-use crate::entity::{Entity, EntityList};
 use crate::id::OrderNum;
 use crate::id::Uid;
-use crate::impl_default_entitylist;
-use crate::impl_entity;
+use crate::id_list;
+use crate::impl_id_trait;
+use crate::impl_idlist_default;
+use crate::list::IdList;
 use anyhow::Result;
-use indexmap::IndexMap;
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
 
@@ -74,7 +74,7 @@ pub struct Status {
 	pub status_cooldown_type: StatusCooldownType,
 	pub duration_left: u32,
 }
-impl_entity!(Status);
+impl_id_trait!(Status);
 
 impl Status {
 	pub fn new(
@@ -94,20 +94,21 @@ impl Status {
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 #[serde(transparent)]
 pub struct Statuses {
-	map: IndexMap<Uid, Status>,
+	// TODO: rename to list
+	list: id_list!(Status),
 }
 
 impl Statuses {
 	pub fn drain_by_type(&mut self, status_type: StatusCooldownType) {
 		// decrease all statuses duration with the status cooldown type provided
-		self.map.iter_mut().for_each(|(_, status)| {
+		self.list.iter_mut().for_each(|(_, status)| {
 			if status.status_cooldown_type == status_type && status.duration_left > 0 {
 				log::debug!("Drained {:?}", status.status_type);
 				status.duration_left -= 1
 			}
 		});
 		// remove all statuses that have run out = retain all statuses that haven't yet run out
-		self.map.retain(|_, status| status.duration_left > 0);
+		self.list.retain(|_, status| status.duration_left > 0);
 		self.sort();
 	}
 
@@ -121,15 +122,15 @@ impl Statuses {
 			curr.duration_left -= 1;
 		}
 
-		self.map.retain(|_, status| status.duration_left > 0);
+		self.list.retain(|_, status| status.duration_left > 0);
 		Ok(())
 	}
 }
+impl_idlist_default!(Statuses, Status);
 
-impl EntityList for Statuses {
-	impl_default_entitylist!(Status);
+impl IdList for Statuses {
 	fn sort(&mut self) {
-		self.map
+		self.list
 			.sort_by(|_, a, _, b| a.status_type.to_string().cmp(&b.status_type.to_string()));
 	}
 }
