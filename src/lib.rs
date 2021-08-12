@@ -1,27 +1,16 @@
-/*
-   TODO: Separate the program into the server, the Ui client, and the Discord client
-   Naybe something like this?
-   src/bin/discord.rs
-   src/bin/client.rs
-   src/lib.rs -> (no actual logic, just mod declarations)
-   src/\*.rs -> all other mods
-*/
 #![feature(try_blocks)]
-// TMP
-// FIXME: used when parsing env::args() in start(). Rework that and remove this
-#![feature(exact_size_is_empty)]
 
-//pub mod action_enums;
+pub mod server;
+mod game_state;
+
 mod action_enums;
 mod list;
 mod player;
-//pub mod player_field;
 mod id;
 mod player_field;
 mod skill;
 mod stats;
 mod status;
-mod term;
 
 use action_enums::{
 	EditorAction, EditorActionEditMode, EditorActionViewMode, GameAction, MainMenuAction,
@@ -33,26 +22,11 @@ use id::Uid;
 use indexmap::IndexMap;
 use player::{Player, Players};
 use player_field::PlayerField;
-use serde::Deserialize;
-use serde::Serialize;
 use skill::Skill;
 use stats::StatList;
-use stats::Stats;
-use status::Status;
 use status::StatusCooldownType;
 use status::StatusList;
-use status::Statuses;
-use term::list_state_ext::ListStateExt;
-use term::{EditorMode, Term};
 use tui::widgets::ListState;
-
-#[derive(Serialize, Deserialize, Debug, Default)]
-struct GameState {
-	players: Players,
-	order: Vec<Uid>,
-	stat_list: StatList,
-	status_list: StatusList,
-}
 
 macro_rules! get_player {
 	($players:ident, $i:expr) => {
@@ -76,149 +50,7 @@ macro_rules! get_player_mut {
 	};
 }
 
-pub fn run() -> Result<()> {
-	use std::panic;
-
-	log::debug!("Starting...");
-	log_panics::init();
-	// TODO: do something about it
-	if let Err(e) = panic::catch_unwind(start) {
-		if let Ok(term) = Term::new() {
-			let _ = term.messagebox("sowwy! OwO the pwogwam cwashed! 🥺 pwease d-don't bwame the d-devewopew, òωó he's d-doing his best!");
-		}
-		panic::resume_unwind(e);
-	}
-	Ok(())
-}
-
 fn start() -> Result<()> {
-	let debug_add = !std::env::args().skip(1).take(1).is_empty();
-	let term = Term::new()?;
-	let mut games: Vec<(String, GameState)> = Vec::new();
-
-	let file_contents = std::fs::read_to_string("games.json");
-	if let Ok(json) = file_contents.map_err(|e| log::info!("games.json could not be read: {}", e)) {
-		match serde_json::from_str(&json) {
-			Ok(data) => {
-				log::debug!("Read from the db: {:#?}", data);
-				games = data;
-			}
-			Err(e) => {
-				log::error!("The database is corrupted: {}", e);
-				if term.messagebox_yn("The database is corrupted. Continue?")? {
-					let db_bak = format!(
-						"games.json.bak-{}",
-						std::time::SystemTime::now()
-							.duration_since(std::time::UNIX_EPOCH)?
-							.as_secs()
-					);
-					log::info!("Coping the old corrupted db to {}", db_bak);
-					let _ = std::fs::copy("games.json", db_bak)
-						.map_err(|e| log::error!("Error copying: {}", e));
-				} else {
-					return Err(e.into());
-				}
-			}
-		}
-	}
-
-	// sort games by name
-	games.sort_by(|(a, _), (b, _)| a.cmp(b));
-
-	if debug_add {
-		let mut players = Players::default();
-		let mut stat_list = StatList::default();
-		let mut status_list = StatusList::default();
-
-		for i in 0..5 {
-			let mut skills = Vec::new();
-			let mut stats = Stats::default();
-			let mut statuses = Statuses::default();
-			for k in 0..4 {
-				skills.push(Skill::new(format!("Testing skill {}", i), k * k));
-				stats.set(format!("Testing stat {}", i), (i * k) as i32);
-				statuses.push(Status::new(
-					format!("Testing status {}", i),
-					StatusCooldownType::Manual,
-					k * k,
-				));
-			}
-			let mut player = Player::new(format!("Testing player #{}", i), skills);
-			player.stats = stats;
-			player.statuses = statuses;
-			players.push(player);
-			stat_list.insert(format!("Testing stat {}", i));
-			status_list.insert(format!("Testing status {}", i));
-		}
-
-		let game_state = GameState {
-			order: players.iter().map(|(id, _)| *id).collect::<Vec<Uid>>(),
-			players,
-			stat_list,
-			status_list,
-		};
-
-		games.insert(0, ("DEBUG".to_string(), game_state));
-	}
-
-	let game_num = {
-		let mut options = games
-			.iter()
-			.map(|(name, _)| name.as_str())
-			.collect::<Vec<&str>>();
-		options.push("Add...");
-		loop {
-			match term.messagebox_with_options("Choose the game", &options, true)? {
-				Some(num) => {
-					if num >= games.len().into() {
-						let name =
-							term.messagebox_with_input_field("Enter the name of the new game")?;
-						games.push((name, GameState::default()));
-					}
-					break num;
-				}
-				None => return Ok(()),
-			}
-		}
-	};
-
-	let mut state = &mut games
-		.get_mut(*game_num)
-		.ok_or(anyhow::Error::msg("Game not found"))?
-		.1;
-
-	/*
-	state.stat_list = {
-		let mut map = HashMap::new();
-		map.insert(Uid(0), "Strength".to_string());
-		map.insert(Uid(1), "Dexterity".to_string());
-		map.insert(Uid(2), "Poise".to_string());
-		map.insert(Uid(3), "Wisdom".to_string());
-		map.insert(Uid(4), "Intelligence".to_string());
-		map.insert(Uid(5), "Charisma".to_string());
-		StatList::new(map)
-	};
-
-	state.status_list = {
-		let mut map = HashMap::new();
-		map.insert(Uid(0), "Discharge".to_string());
-		map.insert(Uid(1), "Fire Attack".to_string());
-		map.insert(Uid(2), "Fire Shield".to_string());
-		map.insert(Uid(3), "Ice Shield".to_string());
-		map.insert(Uid(4), "Blizzard".to_string());
-		map.insert(Uid(5), "Fusion".to_string());
-		map.insert(Uid(6), "Luck".to_string());
-		map.insert(Uid(7), "Knockdown".to_string());
-		map.insert(Uid(8), "Poison".to_string());
-		map.insert(Uid(9), "Stun".to_string());
-		StatusList::new(map)
-	};
-	*/
-
-	if !state.players.is_empty() && state.order.is_empty() {
-		state.order = state.players.iter().map(|(id, _)| *id).collect();
-	}
-
 	loop {
 		match term.draw_main_menu()? {
 			MainMenuAction::Play => {

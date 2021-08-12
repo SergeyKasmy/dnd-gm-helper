@@ -3,6 +3,9 @@ use log::LevelFilter;
 use simplelog::{Config, WriteLogger};
 use std::fs::OpenOptions;
 
+mod client;
+mod term;
+
 fn main() -> Result<()> {
 	WriteLogger::init(
 		LevelFilter::Debug,
@@ -12,5 +15,5 @@ fn main() -> Result<()> {
 			.append(true)
 			.open("dnd.log")?,
 	)?;
-	dnd_gm_helper::run()
+	client::run()
 }
