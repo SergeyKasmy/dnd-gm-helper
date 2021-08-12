@@ -85,7 +85,7 @@ where
 #[serde(transparent)]
 pub struct IdList<T>
 where
-	T: Id, //where T: Id + Serialize + Deserialize
+	T: Id + Ord, //where T: Id + Serialize + Deserialize
 {
 	// Not intended for end-user use, only for custom impl IdList<T>
 	pub list: IndexMap<Uid, T>,
@@ -93,7 +93,7 @@ where
 
 impl<T> IdList<T>
 where
-	T: Id,
+	T: Id + Ord,
 {
 	pub fn new(list: IndexMap<Uid, T>) -> Self {
 		Self { list }
@@ -105,9 +105,8 @@ where
 		//self.sort();
 		self.list.get(&id)
 	}
-
 	pub fn get_mut(&mut self, id: Uid) -> Option<&mut T> {
-		//self.sort();
+		self.sort();
 		self.list.get_mut(&id)
 	}
 
@@ -131,19 +130,19 @@ where
 		};
 
 		self.insert(biggest_id, new_val);
-		//self.sort();
+		self.sort();
 		biggest_id
 	}
 
 	pub fn insert(&mut self, id: Uid, mut new_val: T) {
 		*new_val.id() = Some(id);
 		self.list.insert(id, new_val);
-		//self.sort();
+		self.sort();
 	}
 
 	pub fn remove(&mut self, id: Uid) -> Option<(Uid, T)> {
 		let removed = self.list.remove_entry(&id);
-		//self.sort();
+		self.sort();
 		removed
 	}
 
@@ -158,9 +157,13 @@ where
 	pub fn is_empty(&self) -> bool {
 		self.list.is_empty()
 	}
+
+	pub fn sort(&mut self) {
+		self.list.sort_by(|_, a, _, b| a.cmp(b))
+	}
 }
 
-impl<T: Id> Default for IdList<T> {
+impl<T: Id + Ord> Default for IdList<T> {
 	fn default() -> Self {
 		Self::new(IndexMap::new())
 	}

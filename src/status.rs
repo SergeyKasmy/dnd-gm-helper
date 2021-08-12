@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 pub type StatusList = SetList<String>;
 
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum StatusCooldownType {
 	Normal,
 	OnAttacking,
@@ -15,7 +15,7 @@ pub enum StatusCooldownType {
 	Manual,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, Debug)]
 pub struct Status {
 	id: Option<Uid>,
 	pub status_type: String,

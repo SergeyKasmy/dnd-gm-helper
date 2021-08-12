@@ -8,8 +8,9 @@ use crate::status::StatusCooldownType;
 use crate::status::Statuses;
 use serde::{Deserialize, Serialize};
 
-pub type Hp = u16;
+pub type Players = IdList<Player>;
 
+pub type Hp = u16;
 pub enum PlayerState {
 	Alive(Hp),
 	Dead,
@@ -94,12 +95,30 @@ impl Player {
 	}
 }
 
-pub type Players = IdList<Player>;
+impl Ord for Player {
+	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+		use std::cmp::Ordering;
 
-/*
-impl IdList for Players {
-	fn sort(&mut self) {
-		self.list.sort_by(|_, a, _, b| a.name.cmp(&b.name));
+		let res = self.name.cmp(&other.name);
+		if let Ordering::Equal = res {
+			// cmp ids if the names are the same
+			self.id.cmp(&other.id)
+		} else {
+			res
+		}
 	}
 }
-*/
+
+impl PartialOrd for Player {
+	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+		Some(self.cmp(&other))
+	}
+}
+
+impl PartialEq for Player {
+	fn eq(&self, other: &Self) -> bool {
+		self.id == other.id
+	}
+}
+
+impl Eq for Player {}
