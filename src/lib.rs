@@ -1,5 +1,14 @@
+/*
+   TODO: Separate the program into the server, the Ui client, and the Discord client
+   Naybe something like this?
+   src/bin/discord.rs
+   src/bin/client.rs
+   src/lib.rs -> (no actual logic, just mod declarations)
+   src/\*.rs -> all other mods
+*/
 #![feature(try_blocks)]
 // TMP
+// FIXME: used when parsing env::args() in start(). Rework that and remove this
 #![feature(exact_size_is_empty)]
 
 //pub mod action_enums;
@@ -95,7 +104,6 @@ fn start() -> Result<()> {
 				games = data;
 			}
 			Err(e) => {
-				// TODO: convert old format with Vec to the new with HashMap
 				log::error!("The database is corrupted: {}", e);
 				if term.messagebox_yn("The database is corrupted. Continue?")? {
 					let db_bak = format!(
@@ -279,11 +287,11 @@ fn game_start(
 		Pending,
 		Picked(*const Player),
 	}
-	let mut next_player = NextPlayerState::Default;
+	assert!(!player_order.is_empty());
 
-	// TODO: do this only if player_order is empty
+	let mut next_player = NextPlayerState::Default;
 	'game: loop {
-		// TODO: crashes
+		// FIXME: crashes
 		if let NextPlayerState::Pending = next_player {
 			log::debug!("Pending a next player change.");
 			if let Some(picked_player) = term.pick_player(players)? {
@@ -292,7 +300,6 @@ fn game_start(
 			}
 		}
 
-		//for (id, player) in players.iter_mut() {
 		for &id in player_order.iter() {
 			if let NextPlayerState::Picked(next_player) = next_player {
 				let player = get_player!(players, id);
@@ -308,7 +315,6 @@ fn game_start(
 					// TODO: use skills on others -> adds status
 					// TODO: rename "Drain status" to "Got hit"/"Hit mob"
 					GameAction::UseSkill => {
-						// TODO: rework
 						let skills = &mut get_player_mut!(players, id).skills;
 						log::debug!("Choosing a skill to use");
 						loop {
@@ -443,7 +449,6 @@ fn character_menu(
 			Some(|rect| {
 				if let Some(selected) = state.selected_onum() {
 					Term::player_stats(
-						// TODO: don't unwrap mindlessly
 						players.get_by_index(selected).unwrap().1,
 						stat_list,
 						status_list,
@@ -568,7 +573,6 @@ fn edit_player(
 
 		match term.draw_editor(
 			EditorMode::Edit {
-				// TODO: select the actual player
 				selected: players.get_index_of(id).unwrap(),
 				error: error.clone(),
 			},
@@ -576,7 +580,6 @@ fn edit_player(
 			&player_names_list,
 			Some(|rect| {
 				Term::player_stats(
-					// TODO: don't unwrap mindlessly
 					players.get(id).unwrap(),
 					stat_list,
 					status_list,
@@ -633,7 +636,6 @@ fn edit_player(
 						}
 						player.name = buff_str.clone();
 					}
-					// TODO: maybe try to integrate stat id together with selected id in the enum?
 					PlayerField::Stat(selected) => {
 						let stat = stat_list.get(selected).unwrap();
 
@@ -685,7 +687,7 @@ fn edit_player(
 				buffer = None;
 				selected_field = selected_field.next(stat_list);
 			}
-			// TODO: properly check for empty buffer in player and skill names
+			// FIXME: properly check for empty buffer in player and skill names
 			EditorAction::Edit(EditorActionEditMode::Done) => {
 				let player = get_player_mut!(players, id);
 				log::debug!("Done editing {}", player.name);
@@ -735,7 +737,6 @@ fn reorder_players(
 				}
 				state.select_onum(Some(num));
 				loop {
-					// TODO: dedup
 					let name_list: Vec<&str> = player_list.iter().map(|(_, name)| *name).collect();
 					log::debug!("Moving player #{}", state.selected().unwrap());
 					// TODO: move this inside Term. the controller should be Ui agnostic
@@ -745,7 +746,6 @@ fn reorder_players(
 						state.selected_onum(),
 						true,
 					)? {
-						// TODO: add more checks for unwrap()
 						KeyCode::Down => {
 							let selected = state.selected().unwrap();
 							if selected + 1 >= player_list.len() {
@@ -812,7 +812,7 @@ fn statlist_menu(ui: &Term, stat_list: &mut StatList) -> Result<()> {
 			EditorAction::View(EditorActionViewMode::Edit) => {
 				if let Some(num) = state.selected_onum() {
 					log::debug!("Editing status #{:?}", num);
-					// TODO: avoid clonning
+					// FIXME: avoid clonning
 					let stat = stat_list
 						.remove(&stat_list.get(num).unwrap().clone())
 						.unwrap();

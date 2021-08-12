@@ -622,8 +622,8 @@ impl Term {
 		let mut rows_stats = Vec::new();
 		{
 			for (i, stat) in stat_list.iter().enumerate() {
-				// TODO: avoid to_string()'ing everything
-				// TODO: make this actually readable and easy to understand
+				// FIXME: avoid to_string()'ing everything
+				// FIXME: make this actually readable and easy to understand
 				let (style, stat_text) = match (selected, selected_str) {
 					(Some(selected), Some(string)) => {
 						if let PlayerField::Stat(selected) = selected {
@@ -739,7 +739,6 @@ impl Term {
 			.direction(Direction::Vertical)
 			.constraints(
 				[
-					// TODO: replace as with try_into()
 					Constraint::Length(rows_outer.len() as u16),
 					Constraint::Length(rows_stats.len() as u16 + 2), // + borders
 					Constraint::Length(rows_skills.len() as u16 + 2),
@@ -876,9 +875,6 @@ impl Term {
 		);
 	}
 
-	// TODO: implement "simple editor" that will act as an editor for both stats and statuses (and
-	// maybe items???)
-
 	pub fn draw_editor<'a, T, TT, F>(
 		&self,
 		mode: EditorMode,
@@ -890,21 +886,20 @@ impl Term {
 		T: AsRef<str>,
 		// TODO: why 2 bounds?
 		TT: AsRef<str>,
-		// TODO: F: Fn(Rect) -> Vec<(Box<dyn Widget>, Rect)>,
+		// TODO: Use F: Fn(Rect) -> Vec<(Box<dyn Widget>, Rect)>,
 		F: Fn(Rect) -> Vec<(Table<'a>, Rect)>,
 	{
 		let block = {
 			let block = Block::default().borders(Borders::ALL);
 			if let Some(title) = list_title {
-				// TODO: avoid to_string'ing
+				// FIXME: avoid to_string'ing
 				block.title(title.as_ref().to_string())
 			} else {
 				block
 			}
 		};
-		// TODO: mv avoid allocating a whole vec?
 		let list = List::new({
-			let mut v = Vec::new();
+			let mut v = Vec::with_capacity(list_items.len());
 			for item in list_items {
 				v.push(ListItem::new(item.as_ref()));
 			}
@@ -1011,25 +1006,6 @@ impl Term {
 						_ => (),
 					},
 					EditorMode::Edit { .. } => {
-						/*
-						macro_rules! validate {
-							() => {
-								if !validate_input(
-									add_mode_buffer.as_ref().unwrap(),
-									selected_field,
-								) {
-									errors.push(format!(
-										"Not a valid number: {}",
-										add_mode_buffer.as_ref().unwrap()
-									));
-									false
-								} else {
-									true
-								}
-							};
-						}
-						*/
-
 						match key.code {
 							KeyCode::Char(ch) => {
 								//buffer.push(ch);
@@ -1069,8 +1045,9 @@ impl Term {
 		let mut buffer = item;
 		loop {
 			let item_names = {
+				// TODO: change this vec from <String> to <&str>
+				// Perhaps it's requred to make list.get_names() return &str's?
 				let mut item_names = list.get_names();
-				// TODO: avoid cloning
 				item_names.insert(*item_ordernum, buffer.clone());
 				item_names
 			};
@@ -1089,7 +1066,6 @@ impl Term {
 				EditorAction::Edit(EditorActionEditMode::Pop) => {
 					buffer.pop();
 				}
-				// TODO: properly check for empty buffer in player and skill names
 				EditorAction::Edit(
 					EditorActionEditMode::DoneWithField
 					| EditorActionEditMode::Done

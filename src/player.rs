@@ -27,6 +27,7 @@ pub struct Player {
 	money: i64,
 	pub skills: Vec<Skill>,
 	pub statuses: Statuses,
+	// TODO: impl items
 }
 impl_id_trait!(Player);
 

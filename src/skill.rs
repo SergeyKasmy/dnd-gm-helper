@@ -17,7 +17,6 @@ impl Skill {
 		}
 	}
 
-	// TODO: mb add some text to the result?
 	pub fn r#use(&mut self) -> Result<(), ()> {
 		if self.cooldown_left == 0 {
 			log::debug!("Using skill {}", self.name);

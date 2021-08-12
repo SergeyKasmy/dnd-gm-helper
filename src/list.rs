@@ -49,6 +49,7 @@ where
 	}
 
 	// TODO: is there a way not to allocate?
+	// There should be a way to check if T: AsRef<str>...
 	pub fn get_names(&self) -> Vec<String> {
 		self.list.iter().map(|x| x.to_string()).collect()
 	}
