@@ -4,21 +4,22 @@ use crate::id::Uid;
 use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
-use std::fmt::Display;
 use std::hash::Hash;
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SetList<T>
 where
-	T: Eq + Hash /* for the hashing itself */ + Ord /* for sorting */ + Display, /* for getting names/pretty list */
+	//T: Eq + Hash /* for the hashing itself */ + Ord /* for sorting */ + Display, /* for getting names/pretty list */
+	T: Eq + Hash /* for the hashing itself */ + Ord /* for sorting */ + AsRef<str>, /* to avoid allocating when using Display. TODO: Perhaps there's a better way that restricting SetList to mostly just Strings? */
 {
 	list: IndexSet<T>,
 }
 
 impl<T> SetList<T>
 where
-	T: Eq + Hash + Ord + Display,
+	//T: Eq + Hash + Ord + Display,
+	T: Eq + Hash + Ord + AsRef<str>,
 {
 	pub fn new(list: IndexSet<T>) -> Self {
 		Self { list }
@@ -48,10 +49,8 @@ where
 		self.list.get_full(val).map(|(id, _)| OrderNum(id))
 	}
 
-	// TODO: is there a way not to allocate?
-	// There should be a way to check if T: AsRef<str>...
-	pub fn get_names(&self) -> Vec<String> {
-		self.list.iter().map(|x| x.to_string()).collect()
+	pub fn get_names(&self) -> Vec<&str> {
+		self.list.iter().map(|x| x.as_ref()).collect()
 	}
 
 	pub fn insert(&mut self, val: T) {

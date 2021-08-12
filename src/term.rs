@@ -1045,10 +1045,8 @@ impl Term {
 		let mut buffer = item;
 		loop {
 			let item_names = {
-				// TODO: change this vec from <String> to <&str>
-				// Perhaps it's requred to make list.get_names() return &str's?
 				let mut item_names = list.get_names();
-				item_names.insert(*item_ordernum, buffer.clone());
+				item_names.insert(*item_ordernum, &buffer);
 				item_names
 			};
 			match self.draw_editor(
