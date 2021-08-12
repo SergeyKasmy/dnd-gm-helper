@@ -5,7 +5,7 @@ use crate::action_enums::{
 	SettingsAction,
 };
 use crate::id::{OrderNum, Uid};
-use crate::list::IdList;
+use crate::list::SetList;
 use crate::player::{Player, Players};
 use crate::player_field::PlayerField;
 use crate::skill::Skill;
@@ -882,7 +882,7 @@ impl Term {
 	pub fn draw_editor<'a, T, TT, F>(
 		&self,
 		mode: EditorMode,
-		list_title: T,
+		list_title: Option<T>,
 		list_items: &'a [TT],
 		details: Option<F>,
 	) -> Result<EditorAction>
@@ -893,6 +893,15 @@ impl Term {
 		// TODO: F: Fn(Rect) -> Vec<(Box<dyn Widget>, Rect)>,
 		F: Fn(Rect) -> Vec<(Table<'a>, Rect)>,
 	{
+		let block = {
+			let block = Block::default().borders(Borders::ALL);
+			if let Some(title) = list_title {
+				// TODO: avoid to_string'ing
+				block.title(title.as_ref().to_string())
+			} else {
+				block
+			}
+		};
 		// TODO: mv avoid allocating a whole vec?
 		let list = List::new({
 			let mut v = Vec::new();
@@ -902,11 +911,7 @@ impl Term {
 			v
 		})
 		.highlight_symbol(">> ")
-		.block(
-			Block::default()
-				.title(list_title.as_ref())
-				.borders(Borders::ALL),
-		);
+		.block(block);
 		let mut list_state = ListState::default();
 		list_state.select_onum(match mode {
 			EditorMode::View { selected } => selected,
@@ -1052,5 +1057,55 @@ impl Term {
 				}
 			}
 		}
+	}
+
+	pub fn edit_setlist(
+		&self,
+		list: &SetList<String>,
+		item: String,
+		item_ordernum: OrderNum,
+		title: Option<&str>,
+	) -> Result<String> {
+		let mut buffer = item;
+		loop {
+			let item_names = {
+				let mut item_names = list.get_names();
+				// TODO: avoid cloning
+				item_names.insert(*item_ordernum, buffer.clone());
+				item_names
+			};
+			match self.draw_editor(
+				EditorMode::Edit {
+					selected: item_ordernum,
+					error: None,
+				},
+				title,
+				&item_names,
+				None::<fn(_) -> _>,
+			)? {
+				EditorAction::Edit(EditorActionEditMode::Char(ch)) => {
+					buffer.push(ch);
+				}
+				EditorAction::Edit(EditorActionEditMode::Pop) => {
+					buffer.pop();
+				}
+				// TODO: properly check for empty buffer in player and skill names
+				EditorAction::Edit(
+					EditorActionEditMode::DoneWithField
+					| EditorActionEditMode::Done
+					| EditorActionEditMode::Next
+					| EditorActionEditMode::Prev,
+				) => {
+					break;
+				}
+				EditorAction::View(_) => {
+					log::error!("This should have never been reached. Somehow the editor in editing mode returned a View action");
+					unreachable!();
+				}
+			}
+		}
+
+		log::debug!("Exiting out of the setlist editor...");
+		Ok(buffer)
 	}
 }

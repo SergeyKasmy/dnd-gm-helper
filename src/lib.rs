@@ -20,7 +20,6 @@ use action_enums::{
 };
 use anyhow::Result;
 use crossterm::event::KeyCode;
-use id::OrderNum;
 use id::Uid;
 use indexmap::IndexMap;
 use player::{Player, Players};
@@ -284,6 +283,7 @@ fn game_start(
 
 	// TODO: do this only if player_order is empty
 	'game: loop {
+		// TODO: crashes
 		if let NextPlayerState::Pending = next_player {
 			log::debug!("Pending a next player change.");
 			if let Some(picked_player) = term.pick_player(players)? {
@@ -438,7 +438,7 @@ fn character_menu(
 			EditorMode::View {
 				selected: state.selected_onum(),
 			},
-			"Players",
+			Some("Players"),
 			&player_names_list,
 			Some(|rect| {
 				if let Some(selected) = state.selected_onum() {
@@ -572,7 +572,7 @@ fn edit_player(
 				selected: players.get_index_of(id).unwrap(),
 				error: error.clone(),
 			},
-			"Players",
+			Some("Players"),
 			&player_names_list,
 			Some(|rect| {
 				Term::player_stats(
@@ -794,22 +794,29 @@ fn statlist_menu(ui: &Term, stat_list: &mut StatList) -> Result<()> {
 			EditorMode::View {
 				selected: state.selected_onum(),
 			},
-			"Stats",
+			Some("Stats"),
 			&stat_list.get_names(),
 			None::<fn(_) -> _>,
 		)? {
 			EditorAction::View(EditorActionViewMode::Add) => {
-				state.select(Some(stat_list.len()));
-				log::debug!("Added a new stat");
-				edit_stat(ui, stat_list, None)?;
+				log::debug!("Added a new status");
+				stat_list.insert(ui.edit_setlist(
+					stat_list,
+					String::new(),
+					stat_list.len().into(),
+					Some("Stats"),
+				)?);
 				// TODO: find out which pos the new stat has in the list
 				//last_selected = Some(id);
 			}
 			EditorAction::View(EditorActionViewMode::Edit) => {
 				if let Some(num) = state.selected_onum() {
 					log::debug!("Editing status #{:?}", num);
-					let stat_name = stat_list.get(num).unwrap().to_string();
-					edit_stat(ui, stat_list, Some(&stat_name))?;
+					// TODO: avoid clonning
+					let stat = stat_list
+						.remove(&stat_list.get(num).unwrap().clone())
+						.unwrap();
+					stat_list.insert(ui.edit_setlist(stat_list, stat.1, stat.0, Some("Stats"))?);
 				}
 			}
 			EditorAction::View(EditorActionViewMode::Delete) => {
@@ -846,82 +853,6 @@ fn statlist_menu(ui: &Term, stat_list: &mut StatList) -> Result<()> {
 	Ok(())
 }
 
-fn edit_stat(ui: &Term, stat_list: &mut StatList, name: Option<&str>) -> Result<()> {
-	if let Some(name) = name {
-		log::debug!("Editing stat #{}", name);
-	} else {
-		log::debug!("Adding a stat");
-	}
-
-	// TODO: dedup
-	let selected = match name {
-		Some(name) => stat_list.get_index(name).unwrap(),
-		None => OrderNum(stat_list.len()),
-	};
-
-	let mut buffer = match name {
-		Some(name) => name.to_string(),
-		None => String::new(),
-	};
-	loop {
-		let stats_list_names = {
-			let mut names: Vec<String> = stat_list
-				.get_names()
-				.iter()
-				.enumerate()
-				.map(|(num, x)| {
-					if num != *selected {
-						x.to_string()
-					} else {
-						buffer.clone()
-					}
-				})
-				.collect();
-			if let None = name {
-				names.push(buffer.clone());
-			}
-			names
-		};
-		match ui.draw_editor(
-			EditorMode::Edit {
-				// TODO: select the actual status
-				selected,
-				error: None,
-			},
-			"Stats",
-			&stats_list_names,
-			None::<fn(_) -> _>,
-		)? {
-			EditorAction::Edit(EditorActionEditMode::Char(ch)) => {
-				buffer.push(ch);
-			}
-			EditorAction::Edit(EditorActionEditMode::Pop) => {
-				buffer.pop();
-			}
-			// TODO: properly check for empty buffer in player and skill names
-			EditorAction::Edit(
-				EditorActionEditMode::DoneWithField
-				| EditorActionEditMode::Done
-				| EditorActionEditMode::Next
-				| EditorActionEditMode::Prev,
-			) => {
-				log::debug!("Done editing {}", buffer);
-				if let Some(name) = name {
-					stat_list.remove(name);
-				}
-				stat_list.insert(buffer);
-				break;
-			}
-			EditorAction::View(_) => {
-				log::error!("This should have never been reached. Somehow the editor in editing mode returned a View action");
-				unreachable!();
-			}
-		}
-	}
-
-	log::debug!("Exiting out of the statlist editor...");
-	Ok(())
-}
 fn statuslist_menu(ui: &Term, status_list: &mut StatusList) -> Result<()> {
 	log::debug!("In the statuslist menu...");
 	// TODO: create a UI agnostic list state tracker
@@ -934,22 +865,33 @@ fn statuslist_menu(ui: &Term, status_list: &mut StatusList) -> Result<()> {
 			EditorMode::View {
 				selected: state.selected_onum(),
 			},
-			"Statuses",
+			Some("Statuses"),
 			&status_names_list,
 			None::<fn(_) -> _>,
 		)? {
 			EditorAction::View(EditorActionViewMode::Add) => {
-				state.select(Some(status_list.len()));
 				log::debug!("Added a new status");
-				edit_status(ui, status_list, None)?;
+				status_list.insert(ui.edit_setlist(
+					status_list,
+					String::new(),
+					status_list.len().into(),
+					Some("Statuses"),
+				)?);
 				// TODO: find out which pos the new stat has in the list
 				//last_selected = Some(id);
 			}
 			EditorAction::View(EditorActionViewMode::Edit) => {
 				if let Some(num) = state.selected_onum() {
 					log::debug!("Editing status #{:?}", num);
-					let status_name = status_list.get(num).unwrap().to_string();
-					edit_status(ui, status_list, Some(&status_name))?;
+					let status = status_list
+						.remove(&status_list.get(num).unwrap().clone())
+						.unwrap();
+					status_list.insert(ui.edit_setlist(
+						status_list,
+						status.1,
+						status.0,
+						Some("Statuses"),
+					)?);
 				}
 			}
 			EditorAction::View(EditorActionViewMode::Delete) => {
@@ -983,83 +925,5 @@ fn statuslist_menu(ui: &Term, status_list: &mut StatusList) -> Result<()> {
 	}
 
 	log::debug!("Exiting the character menu...");
-	Ok(())
-}
-
-// TODO: combile stat and status menu and editors
-fn edit_status(ui: &Term, status_list: &mut StatusList, name: Option<&str>) -> Result<()> {
-	if let Some(name) = name {
-		log::debug!("Editing status #{}", name);
-	} else {
-		log::debug!("Adding a status");
-	}
-
-	// TODO: dedup
-	let selected = match name {
-		Some(name) => status_list.get_index(name).unwrap(),
-		None => OrderNum(status_list.len()),
-	};
-
-	let mut buffer = match name {
-		Some(name) => name.to_string(),
-		None => String::new(),
-	};
-	loop {
-		let status_list_names = {
-			let mut names: Vec<String> = status_list
-				.get_names()
-				.iter()
-				.enumerate()
-				.map(|(num, x)| {
-					if num != *selected {
-						x.to_string()
-					} else {
-						buffer.clone()
-					}
-				})
-				.collect();
-			if let None = name {
-				names.push(buffer.clone());
-			}
-			names
-		};
-		match ui.draw_editor(
-			EditorMode::Edit {
-				// TODO: select the actual status
-				selected,
-				error: None,
-			},
-			"Statuses",
-			&status_list_names,
-			None::<fn(_) -> _>,
-		)? {
-			EditorAction::Edit(EditorActionEditMode::Char(ch)) => {
-				buffer.push(ch);
-			}
-			EditorAction::Edit(EditorActionEditMode::Pop) => {
-				buffer.pop();
-			}
-			// TODO: properly check for empty buffer in player and skill names
-			EditorAction::Edit(
-				EditorActionEditMode::DoneWithField
-				| EditorActionEditMode::Done
-				| EditorActionEditMode::Next
-				| EditorActionEditMode::Prev,
-			) => {
-				log::debug!("Done editing {}", buffer);
-				if let Some(name) = name {
-					status_list.remove(name);
-				}
-				status_list.insert(buffer);
-				break;
-			}
-			EditorAction::View(_) => {
-				log::error!("This should have never been reached. Somehow the editor in editing mode returned a View action");
-				unreachable!();
-			}
-		}
-	}
-
-	log::debug!("Exiting out of the statlist editor...");
 	Ok(())
 }
