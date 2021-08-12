@@ -1,3 +1,5 @@
+#![feature(try_blocks)]
+
 use anyhow::Result;
 use log::LevelFilter;
 use simplelog::{Config, WriteLogger};
