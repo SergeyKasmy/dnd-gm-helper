@@ -1,4 +1,33 @@
+use crate::id::{OrderNum, Uid};
 use crate::status::StatusCooldownType;
+
+pub enum ClientAction {
+	ServerMessage(ServerMessage),
+	//UserInteraction,
+}
+
+pub enum ServerMessage {
+	GameList(Vec<String>),
+	PlayerData(PlayerData),
+}
+
+pub enum ServerAction {
+	// client Uid
+	ClientMessage(Uid, ClientMessage),
+}
+
+pub enum ClientMessage {
+	RequestGameList,
+	RequestPlayerData(PlayerData),
+	// game name
+	AddNewGame(String),
+	SetCurrentGame(OrderNum),
+	Save,
+}
+
+pub enum PlayerData {
+	IsEmpty(Option<bool>),
+}
 
 pub enum MainMenuAction {
 	Play,

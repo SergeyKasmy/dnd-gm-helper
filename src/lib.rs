@@ -1,4 +1,4 @@
-pub mod action_enums;
+pub mod action;
 pub mod game_state;
 pub mod id;
 pub mod list;

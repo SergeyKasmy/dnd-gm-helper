@@ -1,8 +1,12 @@
+use crate::action::{ClientAction, ClientMessage, PlayerData, ServerAction, ServerMessage};
 use crate::game_state::GameState;
 use crate::id::OrderNum;
 use anyhow::Result;
+use std::sync::mpsc;
 
 pub struct Server {
+	from_client: mpsc::Receiver<ServerAction>,
+	to_client: mpsc::Sender<ClientAction>,
 	// TODO: mb use an IdList instead
 	games: Vec<(String, GameState)>,
 	// TODO: maybe get a specific GameState out of the server and use it directly instead?
@@ -12,7 +16,10 @@ pub struct Server {
 impl Server {
 	// TODO: maybe allow to specify a specific save file in params?
 	// TODO: add enums do indicate that the db is corrupted
-	pub fn new() -> Result<Server> {
+	pub fn new(
+		from_client_channel: mpsc::Receiver<ServerAction>,
+		to_client_channel: mpsc::Sender<ClientAction>,
+	) -> Result<Server> {
 		let mut games: Vec<(String, GameState)>;
 		let file_contents = std::fs::read_to_string("games.json");
 		if let Ok(json) =
@@ -49,9 +56,44 @@ impl Server {
 		// sort games by name
 		games.sort_by(|(a, _), (b, _)| a.cmp(b));
 		Ok(Self {
+			from_client: from_client_channel,
+			to_client: to_client_channel,
 			games,
 			current_game_num: None,
 		})
+	}
+
+	pub fn start(&mut self) -> Result<()> {
+		use crate::action::ClientMessage::*;
+		while let Ok(ServerAction::ClientMessage(_client_id, message)) = self.from_client.recv() {
+			match message {
+				RequestGameList => {
+					self.to_client
+						.send(ClientAction::ServerMessage(ServerMessage::GameList(
+							self.get_game_names(),
+						)))?;
+				}
+				AddNewGame(name) => {
+					self.add_game(name);
+				}
+				SetCurrentGame(num) => self.set_current_game(num),
+				Save => self.save()?,
+				RequestPlayerData(data) => match data {
+					PlayerData::IsEmpty(_) => {
+						self.to_client.send(ClientAction::ServerMessage(
+							ServerMessage::PlayerData(PlayerData::IsEmpty(Some(
+								self.games[*self.current_game_num.unwrap()]
+									.1
+									.players
+									.is_empty(),
+							))),
+						))?;
+					}
+				},
+			}
+		}
+
+		Ok(())
 	}
 
 	pub fn add_game(&mut self, name: String) -> OrderNum {
@@ -59,12 +101,13 @@ impl Server {
 		OrderNum(self.games.len() - 1)
 	}
 
-	pub fn get_names(&self) -> Vec<&str> {
-		self.games.iter().map(|(name, _)| name.as_str()).collect()
+	pub fn get_game_names(&self) -> Vec<String> {
+		self.games.iter().map(|(name, _)| name.clone()).collect()
 	}
 
-	pub fn set_current_game_num(&mut self, num: OrderNum) {
+	pub fn set_current_game(&mut self, num: OrderNum) {
 		assert!(*num < self.games.len());
+		assert!(self.current_game_num == None);
 
 		self.current_game_num = Some(num);
 		let mut state = &mut self.games[*num].1;
