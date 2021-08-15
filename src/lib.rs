@@ -8,3 +8,4 @@ pub mod server;
 pub mod skill;
 pub mod stats;
 pub mod status;
+pub mod side_effect;

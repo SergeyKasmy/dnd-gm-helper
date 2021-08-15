@@ -109,7 +109,7 @@ fn main_menu(ui: &Ui, server: &mut Server) -> Result<()> {
 				)?;
 			}
 			MainMenuAction::EditPlayers => {
-				character_menu(ui, &mut state.players, &state.stat_list, &state.status_list)?
+				character_menu(ui, &mut state.players, &state.stat_list)?
 			}
 			MainMenuAction::ReorderPlayers => {
 				if state.players.is_empty() {
@@ -167,7 +167,7 @@ fn game_start(
 			}
 			log::debug!("Current turn: {} #{}", get_player!(players, id).name, id);
 			loop {
-				match ui.draw_game(get_player!(players, id), stat_list, status_list)? {
+				match ui.draw_game(get_player!(players, id), stat_list)? {
 					// TODO: combine lesser used options into a menu
 					// TODO: use skills on others -> adds status
 					// TODO: rename "Drain status" to "Got hit"/"Hit mob"
@@ -284,7 +284,6 @@ fn character_menu(
 	ui: &Ui,
 	players: &mut Players,
 	stat_list: &StatList,
-	status_list: &StatusList,
 ) -> Result<()> {
 	log::debug!("In the character menu...");
 	// TODO: create a UI agnostic list state tracker
@@ -306,7 +305,6 @@ fn character_menu(
 					Ui::player_stats(
 						players.get_by_index(selected).unwrap().1,
 						stat_list,
-						status_list,
 						rect,
 						None,
 						None,
@@ -321,7 +319,7 @@ fn character_menu(
 				state.select(Some(player_names_list.len()));
 				let id = players.push(Player::default());
 				log::debug!("Added a new player with #{:?}", id);
-				edit_player(ui, players, id, stat_list, status_list)?;
+				edit_player(ui, players, id, stat_list)?;
 				// TODO: find out which pos the new player has in the list
 				//last_selected = Some(id);
 			}
@@ -333,7 +331,6 @@ fn character_menu(
 						players,
 						*players.get_by_index(num).unwrap().0,
 						stat_list,
-						status_list,
 					)?;
 				}
 			}
@@ -375,7 +372,6 @@ fn edit_player(
 	players: &mut Players,
 	id: Uid,
 	stat_list: &StatList,
-	status_list: &StatusList,
 ) -> Result<()> {
 	log::debug!("Editing player #{}", id);
 	let mut selected_field = PlayerField::Name; // TODO: maybe use something like new()?
@@ -437,7 +433,6 @@ fn edit_player(
 				Ui::player_stats(
 					players.get(id).unwrap(),
 					stat_list,
-					status_list,
 					rect,
 					Some(id),
 					Some(selected_field),

@@ -479,7 +479,6 @@ impl Term {
 		&self,
 		player: &Player,
 		stat_list: &StatList,
-		status_list: &StatusList,
 	) -> Result<GameAction> {
 		loop {
 			self.term.borrow_mut().draw(|frame| {
@@ -488,7 +487,6 @@ impl Term {
 				let mut player_stats = Term::player_stats(
 					player,
 					stat_list,
-					status_list,
 					window_rect,
 					None,
 					None,
@@ -589,7 +587,6 @@ impl Term {
 	pub fn player_stats<'a>(
 		player: &'a Player,
 		stat_list: &'a StatList,
-		status_list: &StatusList,
 		rect: Rect,
 		player_id: Option<Uid>,
 		selected: Option<PlayerField>,
