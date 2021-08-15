@@ -18,6 +18,7 @@ use once_cell::sync::Lazy;
 use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::io::{stdout, Stdout};
+use tui::widgets::Widget;
 use tui::{
 	backend::CrosstermBackend,
 	layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -142,6 +143,22 @@ impl Term {
 				.split(layout_x[3])[1],
 		)
 	}
+
+	/*
+	pub fn messagebox_custom<F>(&self, desc: &str, contents: F) -> Result<KeyCode>
+	where
+		// takes the rect of the window and returns the widgets and their coords
+		F: Fn(Rect) -> Vec<(Box<dyn Widget>, Rect)>
+	{
+		self.term.borrow_mut().clear()?;
+		self.term.borrow_mut().draw(|frame| {
+			let widgets = contents(frame.size());
+			for (widget, rect) in widgets {
+				frame.render_widget(*widget, rect);
+			}
+		})?;
+	}
+	*/
 
 	pub fn messagebox_with_options_immediate<T: AsRef<str>>(
 		&self,
@@ -701,7 +718,10 @@ impl Term {
 				)
 				.into(),
 				Span::styled(
-					format!("{:?}", skill.side_effect),
+					match &skill.side_effect {
+						Some(ref se) => format!("{}", se),
+						None => "None".to_string(),
+					},
 					sideeffect_style.unwrap_or_default(),
 				)
 				.into(),
