@@ -7,6 +7,7 @@ pub enum PlayerField {
 	Stat(OrderNum),
 	SkillName(OrderNum),
 	SkillCD(OrderNum),
+	SkillSideEffect(OrderNum),
 }
 
 impl PlayerField {
@@ -28,7 +29,8 @@ impl PlayerField {
 				}
 			}
 			PlayerField::SkillName(i) => PlayerField::SkillCD(*i),
-			PlayerField::SkillCD(i) => PlayerField::SkillName(OrderNum(**i + 1)),
+			PlayerField::SkillCD(i) => PlayerField::SkillSideEffect(*i),
+			PlayerField::SkillSideEffect(i) => PlayerField::SkillName(OrderNum(**i + 1)),
 		}
 	}
 
@@ -46,10 +48,11 @@ impl PlayerField {
 				if **i == 0 {
 					PlayerField::Stat(OrderNum(stat_list.len() - 1))
 				} else {
-					PlayerField::SkillCD(OrderNum(**i - 1))
+					PlayerField::SkillSideEffect(OrderNum(**i - 1))
 				}
 			}
 			PlayerField::SkillCD(i) => PlayerField::SkillName(*i),
+			PlayerField::SkillSideEffect(i) => PlayerField::SkillCD(*i),
 		}
 	}
 }

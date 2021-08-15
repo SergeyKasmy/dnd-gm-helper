@@ -475,23 +475,13 @@ impl Term {
 		})
 	}
 
-	pub fn draw_game(
-		&self,
-		player: &Player,
-		stat_list: &StatList,
-	) -> Result<GameAction> {
+	pub fn draw_game(&self, player: &Player, stat_list: &StatList) -> Result<GameAction> {
 		loop {
 			self.term.borrow_mut().draw(|frame| {
 				let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
 
-				let mut player_stats = Term::player_stats(
-					player,
-					stat_list,
-					window_rect,
-					None,
-					None,
-					None,
-				);
+				let mut player_stats =
+					Term::player_stats(player, stat_list, window_rect, None, None, None);
 				while let Some((table, table_rect)) = player_stats.pop() {
 					frame.render_widget(table, table_rect);
 				}
@@ -696,11 +686,23 @@ impl Term {
 				cd = cd_string;
 			};
 
-			rows_skills.push(Row::new::<[Cell; 2]>([
+			let mut sideeffect_style = None;
+			if let Some(PlayerField::SkillSideEffect(curr_skill_num)) = selected {
+				if *curr_skill_num == i {
+					sideeffect_style = Some(selected_style);
+				}
+			}
+
+			rows_skills.push(Row::new::<[Cell; 3]>([
 				Span::styled(name, name_style.unwrap_or_default()).into(),
 				Span::styled(
 					format!("CD: {} of {}", skill.cooldown_left.to_string(), cd),
 					cd_style.unwrap_or_default(),
+				)
+				.into(),
+				Span::styled(
+					format!("{:?}", skill.side_effect),
+					sideeffect_style.unwrap_or_default(),
 				)
 				.into(),
 			]));
@@ -764,7 +766,14 @@ impl Term {
 			.block(Block::default().borders(Borders::ALL).title("Stats"));
 
 		let table_skills = Table::new(rows_skills)
-			.widths([Constraint::Length(30), Constraint::Length(30)].as_ref())
+			.widths(
+				[
+					Constraint::Length(30),
+					Constraint::Length(30),
+					Constraint::Length(30),
+				]
+				.as_ref(),
+			)
 			.block(Block::default().borders(Borders::ALL).title("Skills"));
 
 		let table_statuses = Table::new(rows_statuses)

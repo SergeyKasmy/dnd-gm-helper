@@ -2,6 +2,8 @@ use crate::term::Term as Ui;
 use crate::term::{list_state_ext::ListStateExt, EditorMode};
 use anyhow::Result;
 use crossterm::event::KeyCode;
+use dnd_gm_helper::id::OrderNum;
+use dnd_gm_helper::side_effect::SideEffect;
 use dnd_gm_helper::{action_enums::EditorActionEditMode, skill::Skill};
 use dnd_gm_helper::{
 	action_enums::{
@@ -280,11 +282,7 @@ fn game_start(
 	Ok(())
 }
 
-fn character_menu(
-	ui: &Ui,
-	players: &mut Players,
-	stat_list: &StatList,
-) -> Result<()> {
+fn character_menu(ui: &Ui, players: &mut Players, stat_list: &StatList) -> Result<()> {
 	log::debug!("In the character menu...");
 	// TODO: create a UI agnostic list state tracker
 	let mut state = ListState::default();
@@ -367,42 +365,43 @@ fn character_menu(
 	Ok(())
 }
 
-fn edit_player(
-	ui: &Ui,
-	players: &mut Players,
-	id: Uid,
-	stat_list: &StatList,
-) -> Result<()> {
+fn edit_player(ui: &Ui, players: &mut Players, id: Uid, stat_list: &StatList) -> Result<()> {
 	log::debug!("Editing player #{}", id);
 	let mut selected_field = PlayerField::Name; // TODO: maybe use something like new()?
 	let mut buffer = None;
 	let mut error = None;
 	loop {
 		if buffer.is_none() {
-			buffer = try {
-				match selected_field {
-					PlayerField::Name => players.get(id)?.name.clone(),
-					PlayerField::Stat(num) => players
-						.get(id)?
+			buffer = match selected_field {
+				PlayerField::Name => Some(players.get(id).unwrap().name.clone()),
+				PlayerField::Stat(num) => Some(
+					players
+						.get(id)
+						.unwrap()
 						.stats
 						.get(stat_list.get(num).unwrap())
 						.to_string(),
-					PlayerField::SkillName(num) => players
-						.get(id)?
+				),
+				PlayerField::SkillName(num) => Some(
+					players
+						.get(id)
+						.unwrap()
 						.skills
 						.get(*num)
 						.map(|x| x.name.clone())
 						.unwrap_or_default(),
-					PlayerField::SkillCD(num) => players
-						.get(id)?
+				),
+				PlayerField::SkillCD(num) => Some(
+					players
+						.get(id)
+						.unwrap()
 						.skills
 						.get(*num)
 						.map(|x| x.cooldown.to_string())
 						.unwrap_or_default(),
-				}
+				),
+				PlayerField::SkillSideEffect(_) => None,
 			};
-			// if still empty for some reason -> create an empty string
-			buffer = Some(buffer.unwrap_or_default());
 		}
 
 		// init fields if they don't exist
@@ -436,7 +435,7 @@ fn edit_player(
 					rect,
 					Some(id),
 					Some(selected_field),
-					Some(buffer.as_deref().unwrap()),
+					buffer.as_deref(),
 				)
 			}),
 		)? {
@@ -471,10 +470,10 @@ fn edit_player(
 				buffer = None;
 			}
 			EditorAction::Edit(EditorActionEditMode::DoneWithField) => {
-				let buff_str = buffer.as_mut().unwrap();
 				let player = get_player_mut!(players, id);
 				match selected_field {
 					PlayerField::Name => {
+						let buff_str = buffer.as_mut().unwrap();
 						log::debug!(
 							"Editing player #{} name: from {} to {}",
 							id,
@@ -485,8 +484,10 @@ fn edit_player(
 							continue;
 						}
 						player.name = buff_str.clone();
+						selected_field = selected_field.next(stat_list);
 					}
 					PlayerField::Stat(selected) => {
+						let buff_str = buffer.as_mut().unwrap();
 						let stat = stat_list.get(selected).unwrap();
 
 						if let Ok(parsed) = buff_str
@@ -506,8 +507,10 @@ fn edit_player(
 						} else {
 							continue;
 						}
+						selected_field = selected_field.next(stat_list);
 					}
 					PlayerField::SkillName(skill_id) => {
+						let buff_str = buffer.as_mut().unwrap();
 						let skill_name = &mut player.skills[*skill_id].name;
 						log::debug!(
 							"Changing player #{}'s skill #{}'s name: from {} to {}",
@@ -517,8 +520,10 @@ fn edit_player(
 							buff_str
 						);
 						*skill_name = buff_str.clone();
+						selected_field = selected_field.next(stat_list);
 					}
 					PlayerField::SkillCD(skill_id) => {
+						let buff_str = buffer.as_mut().unwrap();
 						if let Ok(parsed) = buff_str.parse::<u32>().map_err(|e| {
 							log::error!("Error parsing new skill #{} CD value: {}", skill_id, e)
 						}) {
@@ -532,10 +537,24 @@ fn edit_player(
 							);
 							player.skills[*skill_id].cooldown = parsed;
 						}
+						selected_field = selected_field.next(stat_list);
+					}
+					PlayerField::SkillSideEffect(skill_num) => {
+						let side_effect = match ui.messagebox_with_options(
+							"Side effects",
+							&["None", "Adds status", "Uses skill"],
+							true,
+						)? {
+							Some(OrderNum(0)) | None => None,
+							Some(OrderNum(1)) => Some(SideEffect::AddsStatus),
+							Some(OrderNum(2)) => Some(SideEffect::UsesSkill),
+							_ => unreachable!(),
+						};
+
+						player.skills[*skill_num].side_effect = side_effect;
 					}
 				}
 				buffer = None;
-				selected_field = selected_field.next(stat_list);
 			}
 			// FIXME: properly check for empty buffer in player and skill names
 			EditorAction::Edit(EditorActionEditMode::Done) => {

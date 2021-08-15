@@ -5,7 +5,7 @@ pub mod list;
 pub mod player;
 pub mod player_field;
 pub mod server;
+pub mod side_effect;
 pub mod skill;
 pub mod stats;
 pub mod status;
-pub mod side_effect;

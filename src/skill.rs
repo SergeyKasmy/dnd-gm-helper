@@ -1,12 +1,12 @@
-use serde::{Deserialize, Serialize};
 use crate::side_effect::SideEffect;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct Skill {
 	pub name: String,
 	pub cooldown: u32,
 	pub cooldown_left: u32,
-    pub side_effect: Option<SideEffect>,
+	pub side_effect: Option<SideEffect>,
 }
 
 impl Skill {
@@ -16,7 +16,7 @@ impl Skill {
 			name,
 			cooldown,
 			cooldown_left: 0,
-            side_effect
+			side_effect,
 		}
 	}
 
