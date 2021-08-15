@@ -713,7 +713,7 @@ impl Term {
 			rows_skills.push(Row::new::<[Cell; 3]>([
 				Span::styled(name, name_style.unwrap_or_default()).into(),
 				Span::styled(
-					format!("CD: {} of {}", skill.cooldown_left.to_string(), cd),
+					format!("{} of {}", skill.cooldown_left.to_string(), cd),
 					cd_style.unwrap_or_default(),
 				)
 				.into(),
@@ -726,6 +726,19 @@ impl Term {
 				)
 				.into(),
 			]));
+		}
+		if !rows_skills.is_empty() {
+			//rows_skills.insert(0, Row::new::<[Cell; 3]>([Span::raw("Name").into(), Span::raw("CD").into(), Span::raw("Side Effect").into()]));
+			rows_skills.insert(
+				0,
+				Row::new::<[Cell; 3]>(["Name".into(), "CD".into(), "Side Effect".into()]),
+			);
+			rows_skills.insert(
+				1,
+				// NOTE: workaround, just adding an empty row doesn't work for some reason, it
+				// shows up last in the table no matter what
+				Row::new::<[Cell; 3]>(["".into(), "".into(), "".into()]),
+			);
 		}
 
 		let mut rows_statuses = Vec::new();
