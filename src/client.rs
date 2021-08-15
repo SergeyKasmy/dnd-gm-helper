@@ -150,7 +150,6 @@ fn game_start(
 
 	let mut next_player = NextPlayerState::Default;
 	'game: loop {
-		// FIXME: crashes
 		if let NextPlayerState::Pending = next_player {
 			log::debug!("Pending a next player change.");
 			if let Some(picked_player) = ui.pick_player(players)? {
@@ -160,12 +159,13 @@ fn game_start(
 		}
 
 		for &id in player_order.iter() {
-			if let NextPlayerState::Picked(next_player) = next_player {
+			if let NextPlayerState::Picked(next_player_ptr) = next_player {
 				let player = get_player!(players, id);
-				if !std::ptr::eq(next_player, player) {
+				if !std::ptr::eq(next_player_ptr, player) {
 					log::debug!("Skipping player {}", player.name);
 					continue;
 				}
+                next_player = NextPlayerState::Default;
 			}
 			log::debug!("Current turn: {} #{}", get_player!(players, id).name, id);
 			loop {
