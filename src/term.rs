@@ -888,7 +888,7 @@ impl Term {
 		}
 	}
 
-	pub fn pick_player<'a>(&self, players: &'a mut Players) -> Result<Option<&'a Player>> {
+	pub fn pick_player<'a>(&self, players: &'a Players) -> Result<Option<&'a Player>> {
 		let player_list = players
 			.iter()
 			.map(|(_, x)| x.name.as_str())

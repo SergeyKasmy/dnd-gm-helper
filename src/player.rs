@@ -18,7 +18,7 @@ pub enum PlayerState {
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct Player {
-	id: Option<Uid>,
+	pub id: Option<Uid>,
 	pub name: String,
 	pub stats: Stats,
 	max_hp: Hp,

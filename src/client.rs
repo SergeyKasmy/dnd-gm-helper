@@ -174,22 +174,66 @@ fn game_start(
 					// TODO: use skills on others -> adds status
 					// TODO: rename "Drain status" to "Got hit"/"Hit mob"
 					GameAction::UseSkill => {
-						let skills = &mut get_player_mut!(players, id).skills;
-						log::debug!("Choosing a skill to use");
-						loop {
-							let input = match ui.choose_skill(skills)? {
-								Some(num) => num,
-								None => continue,
-							};
-							log::debug!("Chose skill #{}", input);
-							match skills.get_mut(*input) {
-								Some(skill) => {
-									if skill.r#use().is_err() {
-										ui.messagebox("Skill still on cooldown")?;
-									}
-									break;
+						let input = match ui.choose_skill(&get_player_mut!(players, id).skills)? {
+							Some(num) => num,
+							None => continue,
+						};
+						log::debug!("Chose skill #{}", input);
+						match get_player_mut!(players, id).skills.get_mut(*input) {
+							Some(skill) => {
+								if skill.r#use().is_err() {
+									ui.messagebox("Skill still on cooldown")?;
 								}
-								None => ui.messagebox("Number out of bounds")?,
+							}
+							None => ui.messagebox("Number out of bounds")?,
+						}
+						loop {
+							if let Some(side_effect) = &get_player!(players, id)
+								.skills
+								.get(*input)
+								.unwrap()
+								.side_effect
+							{
+								match side_effect {
+									SideEffect::AddsStatus => {
+										ui.messagebox("This skill has an \"Adds status\" side effect. Continueing...")?;
+										if let Some(target) =
+											ui.pick_player(players)?.map(|x| x.id.unwrap())
+										{
+											if let Some(status) = ui.choose_status(status_list)? {
+												get_player_mut!(players, target).add_status(status);
+												break;
+											}
+										}
+									}
+									SideEffect::UsesSkill => {
+										ui.messagebox("This skill has an \"Uses skill\" side effect. Continueing...")?;
+										if let Some(target) =
+											ui.pick_player(players)?.map(|x| x.id.unwrap())
+										{
+											let skill_names = get_player!(players, target)
+												.skills
+												.iter()
+												.map(|x| x.name.as_str())
+												.collect::<Vec<&str>>();
+											if let Some(chosen_skill) = ui.messagebox_with_options(
+												"Choose skill",
+												&skill_names,
+												true,
+											)? {
+												if get_player_mut!(players, target).skills
+													[*chosen_skill]
+													.r#use()
+													.is_err()
+												{
+													ui.messagebox("Skill already on cooldown...")?;
+												} else {
+													break;
+												}
+											}
+										}
+									}
+								}
 							}
 						}
 					}
