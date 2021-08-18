@@ -144,7 +144,6 @@ impl Term {
 		)
 	}
 
-	/*
 	pub fn messagebox_custom<F>(&self, desc: &str, contents: F) -> Result<KeyCode>
 	where
 		// takes the rect of the window and returns the widgets and their coords
@@ -152,13 +151,26 @@ impl Term {
 	{
 		self.term.borrow_mut().clear()?;
 		self.term.borrow_mut().draw(|frame| {
-			let widgets = contents(frame.size());
-			for (widget, rect) in widgets {
-				frame.render_widget(*widget, rect);
+            let rect = Term::get_centered_box(frame.size(), 20, 10);
+            let block = Block::default().borders(Borders::ALL).title(desc);
+            frame.render_widget(block, rect);
+
+            let inner_rect = {
+                let mut inner_rect = rect.clone();
+                inner_rect.width -= 2;
+                inner_rect.height -= 2;
+                inner_rect.x += 1;
+                inner_rect.y += 1;
+                inner_rect
+            };
+			let widgets = contents(inner_rect);
+			for (mut widget, rect) in widgets {
+				frame.render_widget_ref(widget.as_mut(), rect);
 			}
 		})?;
+
+        Ok(KeyCode::Enter)
 	}
-	*/
 
 	pub fn messagebox_with_options_immediate<T: AsRef<str>>(
 		&self,
