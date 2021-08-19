@@ -144,32 +144,39 @@ impl Term {
 		)
 	}
 
-	pub fn messagebox_custom<F>(&self, desc: &str, contents: F) -> Result<KeyCode>
+	pub fn messagebox_custom<F>(
+		&self,
+		width: u16,
+		height: u16,
+		desc: &str,
+		contents: F,
+	) -> Result<KeyCode>
 	where
 		// takes the rect of the window and returns the widgets and their coords
-		F: Fn(Rect) -> Vec<(Box<dyn Widget>, Rect)>
+		F: Fn(Rect) -> Vec<(Box<dyn Widget>, Rect)>,
 	{
 		self.term.borrow_mut().clear()?;
 		self.term.borrow_mut().draw(|frame| {
-            let rect = Term::get_centered_box(frame.size(), 20, 10);
-            let block = Block::default().borders(Borders::ALL).title(desc);
-            frame.render_widget(block, rect);
+			let messagebox_rect = Term::get_centered_box(frame.size(), width, height);
+			let block = Block::default().borders(Borders::ALL).title(desc);
+			let inner_rect = {
+				let without_margin = block.inner(messagebox_rect);
+				let with_margin = Block::default().borders(Borders::ALL);
+				with_margin.inner(without_margin)
+			};
+			frame.render_widget(block, messagebox_rect);
 
-            let inner_rect = {
-                let mut inner_rect = rect.clone();
-                inner_rect.width -= 2;
-                inner_rect.height -= 2;
-                inner_rect.x += 1;
-                inner_rect.y += 1;
-                inner_rect
-            };
 			let widgets = contents(inner_rect);
 			for (mut widget, rect) in widgets {
 				frame.render_widget_ref(widget.as_mut(), rect);
 			}
 		})?;
 
-        Ok(KeyCode::Enter)
+		Ok(loop {
+			if let Event::Key(key) = read_event()? {
+				break key.code;
+			}
+		})
 	}
 
 	pub fn messagebox_with_options_immediate<T: AsRef<str>>(

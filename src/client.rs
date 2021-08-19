@@ -165,7 +165,7 @@ fn game_start(
 					log::debug!("Skipping player {}", player.name);
 					continue;
 				}
-                next_player = NextPlayerState::Default;
+				next_player = NextPlayerState::Default;
 			}
 			log::debug!("Current turn: {} #{}", get_player!(players, id).name, id);
 			loop {
