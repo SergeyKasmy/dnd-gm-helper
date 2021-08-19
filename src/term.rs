@@ -1166,6 +1166,8 @@ impl Term {
 			Description,
 			Type,
 			Affects,
+			Remove,
+			Done,
 		}
 
 		let rect_offset = |rect: &Rect, offset: u16| {
@@ -1176,7 +1178,7 @@ impl Term {
 
 		let mut selected_field = SideEffectField::Description;
 		let (mut desc_buffer, mut r#type, mut affects) =
-			if let Some(old_side_effect) = old_side_effect {
+			if let Some(old_side_effect) = old_side_effect.clone() {
 				(
 					old_side_effect.description,
 					Some(old_side_effect.r#type),
@@ -1190,7 +1192,7 @@ impl Term {
 			let desc_buffer_clone = desc_buffer.clone();
 			match self.messagebox_custom(
 				40,
-				3,
+				6,
 				"Side effect",
 				|rect| {
 					let mut widgets: Vec<(Box<dyn Widget>, Rect)> = Vec::new();
@@ -1246,6 +1248,28 @@ impl Term {
 						))),
 						rect_offset(&rect, 2),
 					));
+					widgets.push((
+						Box::new(Paragraph::new(Span::styled(
+							"Remove",
+							if let SideEffectField::Remove = selected_field {
+								*STYLE_SELECTED
+							} else {
+								Style::default()
+							},
+						))),
+						rect_offset(&rect, 4),
+					));
+					widgets.push((
+						Box::new(Paragraph::new(Span::styled(
+							"Done",
+							if let SideEffectField::Done = selected_field {
+								*STYLE_SELECTED
+							} else {
+								Style::default()
+							},
+						))),
+						rect_offset(&rect, 5),
+					));
 					widgets
 				},
 				if let SideEffectField::Description = selected_field {
@@ -1292,6 +1316,11 @@ impl Term {
 								_ => unreachable!(),
 							},
 						);
+
+						selected_field = SideEffectField::Done;
+					}
+					SideEffectField::Remove => return Ok(None),
+					SideEffectField::Done => {
 						if r#type.is_some() && affects.is_some() {
 							break;
 						}
@@ -1299,19 +1328,23 @@ impl Term {
 				},
 				KeyCode::Up => {
 					selected_field = match selected_field {
-						SideEffectField::Description => SideEffectField::Affects,
+						SideEffectField::Description => SideEffectField::Done,
 						SideEffectField::Type => SideEffectField::Description,
 						SideEffectField::Affects => SideEffectField::Type,
+						SideEffectField::Remove => SideEffectField::Affects,
+						SideEffectField::Done => SideEffectField::Remove,
 					}
 				}
 				KeyCode::Down => {
 					selected_field = match selected_field {
 						SideEffectField::Description => SideEffectField::Type,
 						SideEffectField::Type => SideEffectField::Affects,
-						SideEffectField::Affects => SideEffectField::Description,
+						SideEffectField::Affects => SideEffectField::Remove,
+						SideEffectField::Remove => SideEffectField::Done,
+						SideEffectField::Done => SideEffectField::Description,
 					}
 				}
-				KeyCode::Esc => return Ok(None),
+				KeyCode::Esc => return Ok(old_side_effect),
 				_ => (),
 			}
 		}
