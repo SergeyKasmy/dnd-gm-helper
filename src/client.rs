@@ -1,11 +1,9 @@
 use crate::term::Term as Ui;
 use anyhow::Result;
+use dnd_gm_helper::list::SetList;
 use dnd_gm_helper::side_effect::{SideEffectAffects, SideEffectType};
-use dnd_gm_helper::{action_enums::EditorActionEditMode, skill::Skill};
 use dnd_gm_helper::{
-	action_enums::{
-		EditorAction, EditorActionViewMode, GameAction, MainMenuAction, SettingsAction,
-	},
+	action_enums::{EditorActionViewMode, GameAction, MainMenuAction, SettingsAction},
 	id::Uid,
 	player::{Player, Players},
 	server::Server,
@@ -114,11 +112,13 @@ fn main_menu(ui: &Ui, server: &mut Server) -> Result<()> {
 					)?;
 					continue;
 				}
-				state.order = reorder_players(ui, &state.order, &mut state.players)?
+				state.order = ui.reorder_players(&state.order, &mut state.players)?
 			}
 			MainMenuAction::Settings => match ui.draw_settings_menu()? {
-				SettingsAction::EditStats => statlist_menu(ui, &mut state.stat_list)?,
-				SettingsAction::EditStatuses => statuslist_menu(ui, &mut state.status_list)?,
+				SettingsAction::EditStats => setlist_menu(ui, &mut state.stat_list, "Stats")?,
+				SettingsAction::EditStatuses => {
+					setlist_menu(ui, &mut state.status_list, "Statuses")?
+				}
 				SettingsAction::GoBack => continue,
 			},
 			MainMenuAction::Quit => break,
@@ -362,26 +362,21 @@ fn character_menu(
 				let added = ui.edit_player(players, id, stat_list, status_list)?;
 				// TODO: find out which pos the new player has in the list
 				//last_selected = Some(id);
-                if let Some(added) = added {
-                    players.insert(id, added);
-                } else {
-                    players.remove(id);
-                }
+				if let Some(added) = added {
+					players.insert(id, added);
+				} else {
+					players.remove(id);
+				}
 			}
 			EditorActionViewMode::Edit(num) => {
 				log::debug!("Editing player #{:?}", num);
-                let id = *players.get_by_index(num).unwrap().0;
-				let edited = ui.edit_player(
-					players,
-                    id,
-					stat_list,
-					status_list,
-				)?;
-                if let Some(edited) = edited {
-                    players.insert(id, edited);
-                } else {
-                    players.remove(id);
-                }
+				let id = *players.get_by_index(num).unwrap().0;
+				let edited = ui.edit_player(players, id, stat_list, status_list)?;
+				if let Some(edited) = edited {
+					players.insert(id, edited);
+				} else {
+					players.remove(id);
+				}
 			}
 			EditorActionViewMode::Delete(num) => {
 				log::debug!("Confirming deletion of player #{:?}", num);
@@ -404,225 +399,44 @@ fn character_menu(
 	Ok(())
 }
 
-fn reorder_players(ui: &Ui, old_player_order: &[Uid], players: &mut Players) -> Result<Vec<Uid>> {
-    todo!();
-    /*
-	let mut player_list: IndexMap<Uid, &str> = old_player_order
-		.iter()
-		.map(|&id| (id, players.get(id).unwrap().name.as_str()))
-		.collect();
-	log::debug!("Old player order with names: {:#?}", player_list);
-	let mut state = ListState::default();
+fn setlist_menu(ui: &Ui, setlist: &mut SetList<String>, menu_title: &str) -> Result<()> {
 	loop {
-		let mut options: Vec<&str> = player_list.iter().map(|(_, name)| *name).collect();
-		// TODO: add an option to add a removed player without resetting
-		options.push("Reset");
-		match ui.messagebox_with_options("Choose which player to move", &options, true)? {
-			Some(num) => {
-				// Reset is the last option, not an actual player name
-				if num == (options.len() - 1).into() {
-					player_list = players
-						.iter()
-						.map(|(id, pl)| (*id, pl.name.as_str()))
-						.collect();
-					continue;
-				}
-				state.select_onum(Some(num));
-				loop {
-					let name_list: Vec<&str> = player_list.iter().map(|(_, name)| *name).collect();
-					log::debug!("Moving player #{}", state.selected().unwrap());
-					// TODO: move this inside Ui. the controller should be Ui agnostic
-					match ui.messagebox_with_options_immediate(
-						"Use arrows to move the player | D to remove them entirely",
-						&name_list,
-						state.selected_onum(),
-						true,
-					)? {
-						KeyCode::Down => {
-							let selected = state.selected().unwrap();
-							if selected + 1 >= player_list.len() {
-								continue;
-							}
-							log::debug!("Old player order in the Vec: {:#?}", player_list);
-							player_list.swap_indices(selected, selected + 1);
-							state.next(player_list.len());
-						}
-						KeyCode::Up => {
-							let selected = state.selected().unwrap();
-							if let None = selected.checked_sub(1) {
-								continue;
-							}
-							log::debug!("Old player order in the Vec: {:#?}", player_list);
-							player_list.swap_indices(selected, selected - 1);
-							state.prev(player_list.len());
-						}
-						KeyCode::Char('d') => {
-							let selected = state.selected().unwrap();
-							player_list.remove(&Uid(selected));
-							break;
-						}
-						KeyCode::Enter | KeyCode::Esc => {
-							break;
-						}
-						_ => (),
-					}
-				}
-			}
-			None => break,
-		}
-	}
-
-	Ok(player_list.into_iter().map(|(id, _)| id).collect())
-    */
-}
-
-fn statlist_menu(ui: &Ui, stat_list: &mut StatList) -> Result<()> {
-    todo!();
-    /*
-	log::debug!("In the statlist menu...");
-	// TODO: create a UI agnostic list state tracker
-	// TODO: preselect the first
-	let mut state = ListState::default();
-	state.next(stat_list.len());
-	loop {
-		match ui.draw_editor(
-			EditorMode::View {
-				selected: state.selected_onum(),
-			},
-			Some("Stats"),
-			&stat_list.get_names(),
-			None::<fn(_) -> _>,
-		)? {
-			EditorAction::View(EditorActionViewMode::Add) => {
+		match ui.draw_setlist(setlist)? {
+			EditorActionViewMode::Add => {
 				log::debug!("Added a new status");
-				stat_list.insert(ui.edit_setlist(
-					stat_list,
+				setlist.insert(ui.edit_setlist(
+					setlist,
 					String::new(),
-					stat_list.len().into(),
-					Some("Stats"),
+					setlist.len().into(),
+					Some(menu_title),
 				)?);
 				// TODO: find out which pos the new stat has in the list
 				//last_selected = Some(id);
 			}
-			EditorAction::View(EditorActionViewMode::Edit) => {
-				if let Some(num) = state.selected_onum() {
-					log::debug!("Editing status #{:?}", num);
-					// FIXME: avoid clonning
-					let stat = stat_list
-						.remove(&stat_list.get(num).unwrap().clone())
-						.unwrap();
-					stat_list.insert(ui.edit_setlist(stat_list, stat.1, stat.0, Some("Stats"))?);
+			EditorActionViewMode::Edit(num) => {
+				log::debug!("Editing status #{:?}", num);
+				// FIXME: avoid clonning
+				let item = setlist.remove(&setlist.get(num).unwrap().clone()).unwrap();
+				setlist.insert(ui.edit_setlist(setlist, item.1, item.0, Some(menu_title))?);
+			}
+			EditorActionViewMode::Delete(num) => {
+				log::debug!("Confirming deletion of stat #{:?}", num);
+				if ui.messagebox_yn("Are you sure?")? {
+					log::debug!("Deleting #{:?}", num);
+					//state.next(stat_list.len() - 1);
+					let item = setlist.get(num).unwrap().to_string();
+					setlist.remove(&item);
+				} else {
+					log::debug!("Not confirmed");
 				}
 			}
-			EditorAction::View(EditorActionViewMode::Delete) => {
-				if let Some(num) = state.selected_onum() {
-					log::debug!("Confirming deletion of stat #{:?}", num);
-					if ui.messagebox_yn("Are you sure?")? {
-						log::debug!("Deleting #{:?}", num);
-						state.next(stat_list.len() - 1);
-						let stat_name = stat_list.get(num).unwrap().to_string();
-						stat_list.remove(&stat_name);
-					} else {
-						log::debug!("Not confirmed");
-					}
-				}
-			}
-			EditorAction::View(EditorActionViewMode::Next) => {
-				state.next(stat_list.len());
-			}
-			EditorAction::View(EditorActionViewMode::Prev) => {
-				state.prev(stat_list.len());
-			}
-			EditorAction::View(EditorActionViewMode::Quit) => {
+			EditorActionViewMode::Quit => {
 				log::debug!("Closing the character menu");
 				break;
 			}
-			EditorAction::Edit(_) => {
-				log::error!("How did we even get here??? EditorAction::Edit was somehow returned from the editor not in editing mode. Something went terribly wrong...");
-				unreachable!();
-			}
+			EditorActionViewMode::Next | EditorActionViewMode::Prev => unreachable!(),
 		}
 	}
 
-	log::debug!("Exiting the character menu...");
 	Ok(())
-    */
-}
-
-fn statuslist_menu(ui: &Ui, status_list: &mut StatusList) -> Result<()> {
-    todo!();
-    /*
-	log::debug!("In the statuslist menu...");
-	// TODO: create a UI agnostic list state tracker
-	// TODO: preselect the first
-	let mut state = ListState::default();
-	state.next(status_list.len());
-	loop {
-		let status_names_list = status_list.get_names();
-		match ui.draw_editor(
-			EditorMode::View {
-				selected: state.selected_onum(),
-			},
-			Some("Statuses"),
-			&status_names_list,
-			None::<fn(_) -> _>,
-		)? {
-			EditorAction::View(EditorActionViewMode::Add) => {
-				log::debug!("Added a new status");
-				status_list.insert(ui.edit_setlist(
-					status_list,
-					String::new(),
-					status_list.len().into(),
-					Some("Statuses"),
-				)?);
-				// TODO: find out which pos the new stat has in the list
-				//last_selected = Some(id);
-			}
-			EditorAction::View(EditorActionViewMode::Edit) => {
-				if let Some(num) = state.selected_onum() {
-					log::debug!("Editing status #{:?}", num);
-					let status = status_list
-						.remove(&status_list.get(num).unwrap().clone())
-						.unwrap();
-					status_list.insert(ui.edit_setlist(
-						status_list,
-						status.1,
-						status.0,
-						Some("Statuses"),
-					)?);
-				}
-			}
-			EditorAction::View(EditorActionViewMode::Delete) => {
-				if let Some(num) = state.selected_onum() {
-					log::debug!("Confirming deletion of status #{:?}", num);
-					if ui.messagebox_yn("Are you sure?")? {
-						log::debug!("Deleting #{:?}", num);
-						state.next(status_names_list.len() - 1);
-						let status_name = status_list.get(num).unwrap().to_string();
-						status_list.remove(&status_name);
-					} else {
-						log::debug!("Not confirmed");
-					}
-				}
-			}
-			EditorAction::View(EditorActionViewMode::Next) => {
-				state.next(status_names_list.len());
-			}
-			EditorAction::View(EditorActionViewMode::Prev) => {
-				state.prev(status_names_list.len());
-			}
-			EditorAction::View(EditorActionViewMode::Quit) => {
-				log::debug!("Closing the character menu");
-				break;
-			}
-			EditorAction::Edit(_) => {
-				log::error!("How did we even get here??? EditorAction::Edit was somehow returned from the editor not in editing mode. Something went terribly wrong...");
-				unreachable!();
-			}
-		}
-	}
-
-	log::debug!("Exiting the character menu...");
-	Ok(())
-    */
 }
