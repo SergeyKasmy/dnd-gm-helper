@@ -3,7 +3,7 @@ use crate::term::{list_state_ext::ListStateExt, EditorMode};
 use anyhow::Result;
 use crossterm::event::KeyCode;
 use dnd_gm_helper::id::OrderNum;
-use dnd_gm_helper::side_effect::SideEffect;
+use dnd_gm_helper::side_effect::{SideEffect, SideEffectType};
 use dnd_gm_helper::{action_enums::EditorActionEditMode, skill::Skill};
 use dnd_gm_helper::{
 	action_enums::{
@@ -194,8 +194,8 @@ fn game_start(
 								.unwrap()
 								.side_effect
 							{
-								match side_effect {
-									SideEffect::AddsStatus => {
+								match side_effect.r#type {
+									SideEffectType::AddsStatus => {
 										ui.messagebox("This skill has an \"Adds status\" side effect. Continueing...")?;
 										if let Some(target) =
 											ui.pick_player(players)?.map(|x| x.id.unwrap())
@@ -206,7 +206,7 @@ fn game_start(
 											}
 										}
 									}
-									SideEffect::UsesSkill => {
+									SideEffectType::UsesSkill => {
 										ui.messagebox("This skill has an \"Uses skill\" side effect. Continueing...")?;
 										if let Some(target) =
 											ui.pick_player(players)?.map(|x| x.id.unwrap())
@@ -584,6 +584,7 @@ fn edit_player(ui: &Ui, players: &mut Players, id: Uid, stat_list: &StatList) ->
 						selected_field = selected_field.next(stat_list);
 					}
 					PlayerField::SkillSideEffect(skill_num) => {
+						/*
 						let side_effect = match ui.messagebox_with_options(
 							"Side effects",
 							&["None", "Adds status", "Uses skill"],
@@ -594,8 +595,9 @@ fn edit_player(ui: &Ui, players: &mut Players, id: Uid, stat_list: &StatList) ->
 							Some(OrderNum(2)) => Some(SideEffect::UsesSkill),
 							_ => unreachable!(),
 						};
+						*/
 
-						player.skills[*skill_num].side_effect = side_effect;
+						player.skills[*skill_num].side_effect = ui.edit_side_effect(None)?;
 					}
 				}
 				buffer = None;

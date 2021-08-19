@@ -11,6 +11,7 @@ use dnd_gm_helper::id::{OrderNum, Uid};
 use dnd_gm_helper::list::SetList;
 use dnd_gm_helper::player::{Player, Players};
 use dnd_gm_helper::player_field::PlayerField;
+use dnd_gm_helper::side_effect::SideEffect;
 use dnd_gm_helper::skill::Skill;
 use dnd_gm_helper::stats::StatList;
 use dnd_gm_helper::status::{Status, StatusCooldownType, StatusList};
@@ -157,7 +158,7 @@ impl Term {
 	{
 		self.term.borrow_mut().clear()?;
 		self.term.borrow_mut().draw(|frame| {
-			let messagebox_rect = Term::get_centered_box(frame.size(), width, height);
+			let messagebox_rect = Term::get_centered_box(frame.size(), width + 4, height + 4); // +4 cause of the the margins
 			let block = Block::default().borders(Borders::ALL).title(desc);
 			let inner_rect = {
 				let without_margin = block.inner(messagebox_rect);
@@ -738,7 +739,7 @@ impl Term {
 				.into(),
 				Span::styled(
 					match &skill.side_effect {
-						Some(ref se) => format!("{}", se),
+						Some(ref se) => format!("{:?}", se),
 						None => "None".to_string(),
 					},
 					sideeffect_style.unwrap_or_default(),
@@ -1126,5 +1127,47 @@ impl Term {
 
 		log::debug!("Exiting out of the setlist editor...");
 		Ok(buffer)
+	}
+
+	pub fn edit_side_effect(
+		&self,
+		old_side_effect: Option<SideEffect>,
+	) -> Result<Option<SideEffect>> {
+		let mut side_effect = old_side_effect.unwrap_or_default();
+		let rect_offset = |rect: &Rect, offset: u16| {
+			let mut new_rect = rect.clone();
+			new_rect.y += offset;
+			new_rect
+		};
+
+		loop {
+			//let desc_buffer = side_effect.description;
+			self.messagebox_custom(40, 5, "Side effect", |rect| {
+				let mut widgets: Vec<(Box<dyn Widget>, Rect)> = Vec::new();
+
+				widgets.push((
+					Box::new(Paragraph::new(format!(
+						"Description: {}",
+						side_effect.description
+					))),
+					rect.clone(),
+				));
+				widgets.push((
+					Box::new(Paragraph::new(format!("Type: {:?}", side_effect.r#type))),
+					rect_offset(&rect, 2),
+				));
+				widgets.push((
+					Box::new(Paragraph::new(format!(
+						"Affects: {:?}",
+						side_effect.affects
+					))),
+					rect_offset(&rect, 4),
+				));
+				widgets
+			})?;
+			break;
+		}
+
+		Ok(Some(side_effect))
 	}
 }

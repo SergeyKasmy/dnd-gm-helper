@@ -1,3 +1,4 @@
+#![feature(derive_default_enum)]
 pub mod action_enums;
 pub mod game_state;
 pub mod id;
