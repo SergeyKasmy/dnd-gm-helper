@@ -1160,6 +1160,7 @@ impl Term {
 	pub fn edit_side_effect(
 		&self,
 		old_side_effect: Option<SideEffect>,
+		status_list: &StatusList,
 	) -> Result<Option<SideEffect>> {
 		enum SideEffectField {
 			Description,
@@ -1167,7 +1168,6 @@ impl Term {
 			Affects,
 		}
 
-		let mut side_effect = old_side_effect.unwrap_or_default();
 		let rect_offset = |rect: &Rect, offset: u16| {
 			let mut new_rect = rect.clone();
 			new_rect.y += offset;
@@ -1176,7 +1176,9 @@ impl Term {
 
 		let mut selected_field = SideEffectField::Description;
 		// TODO: avoid cloning
-		let mut desc_buffer = side_effect.description.clone();
+		let mut desc_buffer = old_side_effect.map(|x| x.description).unwrap_or_default();
+		let mut r#type: Option<SideEffectType> = None;
+		let mut affects: Option<SideEffectAffects> = None;
 		loop {
 			// TODO: avoid cloning
 			let desc_buffer_clone = desc_buffer.clone();
@@ -1204,7 +1206,7 @@ impl Term {
 					));
 					widgets.push((
 						Box::new(Paragraph::new(Span::styled(
-							format!("Type: {:?}", side_effect.r#type),
+							format!("Type: {:?}", r#type),
 							if let SideEffectField::Type = selected_field {
 								*STYLE_SELECTED
 							} else {
@@ -1215,7 +1217,7 @@ impl Term {
 					));
 					widgets.push((
 						Box::new(Paragraph::new(Span::styled(
-							format!("Affects: {:?}", side_effect.affects),
+							format!("Affects: {:?}", affects),
 							if let SideEffectField::Affects = selected_field {
 								*STYLE_SELECTED
 							} else {
@@ -1235,31 +1237,44 @@ impl Term {
 				KeyCode::Enter => match selected_field {
 					SideEffectField::Description => selected_field = SideEffectField::Type,
 					SideEffectField::Type => {
-						side_effect.r#type = match self.messagebox_with_options(
-							"Side effect type",
-							&["Adds status", "Uses skill"],
-							true,
-						)? {
-							Some(OrderNum(0)) => SideEffectType::AddsStatus,
-							Some(OrderNum(1)) => SideEffectType::UsesSkill,
-							None => continue,
-							_ => unreachable!(),
-						};
+						r#type = Some(
+							match self.messagebox_with_options(
+								"Side effect type",
+								&["Adds status", "Uses skill"],
+								true,
+							)? {
+								Some(OrderNum(0)) => {
+									let status = loop {
+										if let Some(status) = self.choose_status(status_list)? {
+											break status;
+										}
+									};
+									SideEffectType::AddsStatus(status)
+								}
+								Some(OrderNum(1)) => SideEffectType::UsesSkill,
+								None => continue,
+								_ => unreachable!(),
+							},
+						);
 						selected_field = SideEffectField::Affects;
 					}
 					SideEffectField::Affects => {
-						side_effect.affects = match self.messagebox_with_options(
-							"Affects",
-							&["Self", "Someone else", "Both"],
-							true,
-						)? {
-							Some(OrderNum(0)) => SideEffectAffects::Themselves,
-							Some(OrderNum(1)) => SideEffectAffects::SomeoneElse,
-							Some(OrderNum(2)) => SideEffectAffects::Both,
-							None => continue,
-							_ => unreachable!(),
-						};
-						break;
+						affects = Some(
+							match self.messagebox_with_options(
+								"Affects",
+								&["Self", "Someone else", "Both"],
+								true,
+							)? {
+								Some(OrderNum(0)) => SideEffectAffects::Themselves,
+								Some(OrderNum(1)) => SideEffectAffects::SomeoneElse,
+								Some(OrderNum(2)) => SideEffectAffects::Both,
+								None => continue,
+								_ => unreachable!(),
+							},
+						);
+						if r#type.is_some() && affects.is_some() {
+							break;
+						}
 					}
 				},
 				KeyCode::Up => {
@@ -1281,7 +1296,10 @@ impl Term {
 			}
 		}
 
-		side_effect.description = desc_buffer;
-		Ok(Some(side_effect))
+		Ok(Some(SideEffect {
+			description: desc_buffer,
+			r#type: r#type.unwrap(),
+			affects: affects.unwrap(),
+		}))
 	}
 }

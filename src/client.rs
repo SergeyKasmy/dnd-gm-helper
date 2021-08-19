@@ -3,7 +3,8 @@ use crate::term::{list_state_ext::ListStateExt, EditorMode};
 use anyhow::Result;
 use crossterm::event::KeyCode;
 use dnd_gm_helper::id::OrderNum;
-use dnd_gm_helper::side_effect::{SideEffect, SideEffectType};
+use dnd_gm_helper::side_effect::{SideEffect, SideEffectAffects, SideEffectType};
+use dnd_gm_helper::status::Status;
 use dnd_gm_helper::{action_enums::EditorActionEditMode, skill::Skill};
 use dnd_gm_helper::{
 	action_enums::{
@@ -111,7 +112,7 @@ fn main_menu(ui: &Ui, server: &mut Server) -> Result<()> {
 				)?;
 			}
 			MainMenuAction::EditPlayers => {
-				character_menu(ui, &mut state.players, &state.stat_list)?
+				character_menu(ui, &mut state.players, &state.stat_list, &state.status_list)?
 			}
 			MainMenuAction::ReorderPlayers => {
 				if state.players.is_empty() {
@@ -187,49 +188,54 @@ fn game_start(
 							}
 							None => ui.messagebox("Number out of bounds")?,
 						}
-						loop {
-							if let Some(side_effect) = &get_player!(players, id)
-								.skills
-								.get(*input)
-								.unwrap()
-								.side_effect
-							{
-								match side_effect.r#type {
-									SideEffectType::AddsStatus => {
-										ui.messagebox("This skill has an \"Adds status\" side effect. Continueing...")?;
+						if let Some(side_effect) = &get_player!(players, id)
+							.skills
+							.get(*input)
+							.unwrap()
+							.side_effect
+						{
+							match &side_effect.r#type {
+								SideEffectType::AddsStatus(status) => {
+									// TODO: avoid cloning
+									let affects = side_effect.affects.clone();
+									let status = status.clone();
+									if let SideEffectAffects::Themselves | SideEffectAffects::Both =
+										affects
+									{
+										get_player_mut!(players, id).add_status(status.clone())
+									}
+									if let SideEffectAffects::SomeoneElse
+									| SideEffectAffects::Both = affects
+									{
 										if let Some(target) =
 											ui.pick_player(players)?.map(|x| x.id.unwrap())
 										{
-											if let Some(status) = ui.choose_status(status_list)? {
-												get_player_mut!(players, target).add_status(status);
-												break;
-											}
+											get_player_mut!(players, target)
+												.add_status(status.clone());
 										}
 									}
-									SideEffectType::UsesSkill => {
-										ui.messagebox("This skill has an \"Uses skill\" side effect. Continueing...")?;
-										if let Some(target) =
-											ui.pick_player(players)?.map(|x| x.id.unwrap())
-										{
-											let skill_names = get_player!(players, target)
-												.skills
-												.iter()
-												.map(|x| x.name.as_str())
-												.collect::<Vec<&str>>();
-											if let Some(chosen_skill) = ui.messagebox_with_options(
-												"Choose skill",
-												&skill_names,
-												true,
-											)? {
-												if get_player_mut!(players, target).skills
-													[*chosen_skill]
-													.r#use()
-													.is_err()
-												{
-													ui.messagebox("Skill already on cooldown...")?;
-												} else {
-													break;
-												}
+								}
+								SideEffectType::UsesSkill => {
+									ui.messagebox("This skill has an \"Uses skill\" side effect. Continueing...")?;
+									if let Some(target) =
+										ui.pick_player(players)?.map(|x| x.id.unwrap())
+									{
+										let skill_names = get_player!(players, target)
+											.skills
+											.iter()
+											.map(|x| x.name.as_str())
+											.collect::<Vec<&str>>();
+										if let Some(chosen_skill) = ui.messagebox_with_options(
+											"Choose skill",
+											&skill_names,
+											true,
+										)? {
+											if get_player_mut!(players, target).skills
+												[*chosen_skill]
+												.r#use()
+												.is_err()
+											{
+												ui.messagebox("Skill already on cooldown...")?;
 											}
 										}
 									}
@@ -326,7 +332,12 @@ fn game_start(
 	Ok(())
 }
 
-fn character_menu(ui: &Ui, players: &mut Players, stat_list: &StatList) -> Result<()> {
+fn character_menu(
+	ui: &Ui,
+	players: &mut Players,
+	stat_list: &StatList,
+	status_list: &StatusList,
+) -> Result<()> {
 	log::debug!("In the character menu...");
 	// TODO: create a UI agnostic list state tracker
 	let mut state = ListState::default();
@@ -361,7 +372,7 @@ fn character_menu(ui: &Ui, players: &mut Players, stat_list: &StatList) -> Resul
 				state.select(Some(player_names_list.len()));
 				let id = players.push(Player::default());
 				log::debug!("Added a new player with #{:?}", id);
-				edit_player(ui, players, id, stat_list)?;
+				edit_player(ui, players, id, stat_list, status_list)?;
 				// TODO: find out which pos the new player has in the list
 				//last_selected = Some(id);
 			}
@@ -373,6 +384,7 @@ fn character_menu(ui: &Ui, players: &mut Players, stat_list: &StatList) -> Resul
 						players,
 						*players.get_by_index(num).unwrap().0,
 						stat_list,
+						status_list,
 					)?;
 				}
 			}
@@ -409,7 +421,13 @@ fn character_menu(ui: &Ui, players: &mut Players, stat_list: &StatList) -> Resul
 	Ok(())
 }
 
-fn edit_player(ui: &Ui, players: &mut Players, id: Uid, stat_list: &StatList) -> Result<()> {
+fn edit_player(
+	ui: &Ui,
+	players: &mut Players,
+	id: Uid,
+	stat_list: &StatList,
+	status_list: &StatusList,
+) -> Result<()> {
 	log::debug!("Editing player #{}", id);
 	let mut selected_field = PlayerField::Name; // TODO: maybe use something like new()?
 	let mut buffer = None;
@@ -590,8 +608,10 @@ fn edit_player(ui: &Ui, players: &mut Players, id: Uid, stat_list: &StatList) ->
 						selected_field = selected_field.next(stat_list);
 					}
 					PlayerField::SkillSideEffect(skill_num) => {
-						player.skills[*skill_num].side_effect =
-							ui.edit_side_effect(player.skills[*skill_num].side_effect.take())?;
+						player.skills[*skill_num].side_effect = ui.edit_side_effect(
+							player.skills[*skill_num].side_effect.take(),
+							status_list,
+						)?;
 					}
 				}
 				buffer = None;

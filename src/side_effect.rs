@@ -1,6 +1,5 @@
+use crate::status::Status;
 use serde::{Deserialize, Serialize};
-
-use crate::id::Uid;
 
 /*
 impl fmt::Display for SideEffect {
@@ -17,23 +16,21 @@ impl fmt::Display for SideEffect {
 }
 */
 
-#[derive(Default, Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct SideEffect {
 	pub r#type: SideEffectType,
 	pub affects: SideEffectAffects,
 	pub description: String,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum SideEffectType {
-	#[default]
-	AddsStatus,
+	AddsStatus(Status),
 	UsesSkill,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum SideEffectAffects {
-	#[default]
 	Themselves,
 	SomeoneElse,
 	Both,
