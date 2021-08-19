@@ -11,6 +11,7 @@ use dnd_gm_helper::id::{OrderNum, Uid};
 use dnd_gm_helper::list::SetList;
 use dnd_gm_helper::player::{Player, Players};
 use dnd_gm_helper::player_field::PlayerField;
+use dnd_gm_helper::side_effect::{SideEffect, SideEffectAffects, SideEffectType};
 use dnd_gm_helper::skill::Skill;
 use dnd_gm_helper::stats::StatList;
 use dnd_gm_helper::status::{Status, StatusCooldownType, StatusList};
@@ -27,6 +28,9 @@ use tui::{
 	widgets::{Block, Borders, Cell, List, ListItem, ListState, Paragraph, Row, Table},
 	Terminal,
 };
+
+static STYLE_SELECTED: Lazy<Style> =
+	Lazy::new(|| Style::default().bg(Color::White).fg(Color::Black));
 
 #[derive(Clone)]
 pub enum EditorMode {
@@ -144,21 +148,65 @@ impl Term {
 		)
 	}
 
-	/*
-	pub fn messagebox_custom<F>(&self, desc: &str, contents: F) -> Result<KeyCode>
+	pub fn messagebox_custom<F>(
+		&self,
+		width: u16,
+		height: u16,
+		desc: &str,
+		contents: F,
+		// after which widget to place the buffer and with which offset + the buffer itself
+		mut with_buffer: Option<((OrderNum, u16), &mut String)>,
+	) -> Result<KeyCode>
 	where
 		// takes the rect of the window and returns the widgets and their coords
-		F: Fn(Rect) -> Vec<(Box<dyn Widget>, Rect)>
+		F: Fn(Rect) -> Vec<(Box<dyn Widget>, Rect)>,
 	{
 		self.term.borrow_mut().clear()?;
-		self.term.borrow_mut().draw(|frame| {
-			let widgets = contents(frame.size());
-			for (widget, rect) in widgets {
-				frame.render_widget(*widget, rect);
+		loop {
+			self.term.borrow_mut().draw(|frame| {
+				let messagebox_rect = Term::get_centered_box(frame.size(), width + 4, height + 4); // +4 cause of the the margins
+				let block = Block::default().borders(Borders::ALL).title(desc);
+				let inner_rect = {
+					let without_margin = block.inner(messagebox_rect);
+					let with_margin = Block::default().borders(Borders::ALL);
+					with_margin.inner(without_margin)
+				};
+				frame.render_widget(block, messagebox_rect);
+
+				let mut widgets = contents(inner_rect);
+				for (widget, rect) in widgets.iter_mut() {
+					frame.render_widget_ref(widget.as_mut(), *rect);
+				}
+
+				if let Some(((widget_id, offset), ref buffer)) = with_buffer {
+					frame.render_widget(
+						Paragraph::new(Span::styled(buffer.as_str(), *STYLE_SELECTED)),
+						{
+							let mut without_offset = widgets[*widget_id].1;
+							without_offset.x += offset;
+							without_offset
+						},
+					)
+				}
+			})?;
+
+			if let Event::Key(key) = read_event()? {
+				match key.code {
+					KeyCode::Backspace => {
+						if let Some((_, ref mut buffer)) = with_buffer {
+							buffer.pop();
+						}
+					}
+					KeyCode::Char(ch) => {
+						if let Some((_, ref mut buffer)) = with_buffer {
+							buffer.push(ch);
+						}
+					}
+					_ => return Ok(key.code),
+				}
 			}
-		})?;
+		}
 	}
-	*/
 
 	pub fn messagebox_with_options_immediate<T: AsRef<str>>(
 		&self,
@@ -373,8 +421,8 @@ impl Term {
 		))
 	}
 
-	pub fn messagebox(&self, desc: &str) -> Result<()> {
-		self.messagebox_with_options(desc, &["OK"], false)?;
+	pub fn messagebox(&self, desc: impl AsRef<str>) -> Result<()> {
+		self.messagebox_with_options(desc.as_ref(), &["OK"], false)?;
 		Ok(())
 	}
 
@@ -599,7 +647,6 @@ impl Term {
 		selected: Option<PlayerField>,
 		selected_str: Option<&'a str>,
 	) -> Vec<(Table<'a>, Rect)> {
-		let selected_style = Style::default().bg(Color::White).fg(Color::Black);
 		let mut rows_outer = Vec::new();
 
 		let id_str = player_id
@@ -616,7 +663,8 @@ impl Term {
 				Some(string) => string,
 				None => player.name.as_str(),
 			};
-			Row::new::<[Cell; 3]>(["Name".into(), name.into(), id_str.into()]).style(selected_style)
+			Row::new::<[Cell; 3]>(["Name".into(), name.into(), id_str.into()])
+				.style(*STYLE_SELECTED)
 		} else {
 			Row::new::<[Cell; 3]>(["Name".into(), player.name.as_str().into(), id_str.into()])
 		});
@@ -632,7 +680,7 @@ impl Term {
 					(Some(selected), Some(string)) => {
 						if let PlayerField::Stat(selected) = selected {
 							if *selected == i {
-								(selected_style, string.to_string())
+								(*STYLE_SELECTED, string.to_string())
 							} else {
 								(Style::default(), player.stats.get(stat).to_string())
 							}
@@ -643,7 +691,7 @@ impl Term {
 					(_, _) => {
 						if let Some(PlayerField::Stat(selected)) = selected {
 							if *selected == i {
-								(selected_style, player.stats.get(stat).to_string())
+								(*STYLE_SELECTED, player.stats.get(stat).to_string())
 							} else {
 								(Style::default(), player.stats.get(stat).to_string())
 							}
@@ -677,7 +725,7 @@ impl Term {
 					} else {
 						skill.name.as_str().into()
 					};
-					name_style = Some(selected_style);
+					name_style = Some(*STYLE_SELECTED);
 				} else {
 					name = skill.name.as_str().into();
 				}
@@ -695,7 +743,7 @@ impl Term {
 					} else {
 						cd_string
 					};
-					cd_style = Some(selected_style);
+					cd_style = Some(*STYLE_SELECTED);
 				} else {
 					cd = cd_string;
 				}
@@ -706,7 +754,7 @@ impl Term {
 			let mut sideeffect_style = None;
 			if let Some(PlayerField::SkillSideEffect(curr_skill_num)) = selected {
 				if *curr_skill_num == i {
-					sideeffect_style = Some(selected_style);
+					sideeffect_style = Some(*STYLE_SELECTED);
 				}
 			}
 
@@ -719,7 +767,7 @@ impl Term {
 				.into(),
 				Span::styled(
 					match &skill.side_effect {
-						Some(ref se) => format!("{}", se),
+						Some(se) => se.to_string(),
 						None => "None".to_string(),
 					},
 					sideeffect_style.unwrap_or_default(),
@@ -901,14 +949,40 @@ impl Term {
 		}
 	}
 
-	pub fn pick_player<'a>(&self, players: &'a Players) -> Result<Option<&'a Player>> {
+	// TODO: return the Uid instead
+	pub fn pick_player<'a>(
+		&self,
+		players: &'a Players,
+		ignore: Option<Uid>,
+	) -> Result<Option<&'a Player>> {
 		let player_list = players
 			.iter()
-			.map(|(_, x)| x.name.as_str())
+			.filter_map(|(id, x)| {
+				if let Some(id_to_ignore) = ignore {
+					if id_to_ignore == *id {
+						None
+					} else {
+						Some(x.name.as_str())
+					}
+				} else {
+					Some(x.name.as_str())
+				}
+			})
 			.collect::<Vec<&str>>();
 		return Ok(
 			match self.messagebox_with_options("Pick a player", &player_list, true)? {
-				Some(num) => Some(players.get_by_index(num).unwrap().1),
+				Some(num) => {
+					let chosen_player = players.get_by_index(num).unwrap();
+					if let Some(id_to_ignore) = ignore {
+						if *chosen_player.0 == id_to_ignore {
+							Some(players.get_by_index(OrderNum(*num + 1)).unwrap().1)
+						} else {
+							Some(chosen_player.1)
+						}
+					} else {
+						Some(chosen_player.1)
+					}
+				}
 				None => None,
 			},
 		);
@@ -1120,5 +1194,204 @@ impl Term {
 
 		log::debug!("Exiting out of the setlist editor...");
 		Ok(buffer)
+	}
+
+	pub fn edit_side_effect(
+		&self,
+		old_side_effect: Option<SideEffect>,
+		status_list: &StatusList,
+	) -> Result<Option<SideEffect>> {
+		enum SideEffectField {
+			Description,
+			Type,
+			Affects,
+			Remove,
+			Done,
+		}
+
+		let rect_offset = |rect: &Rect, offset: u16| {
+			let mut new_rect = rect.clone();
+			new_rect.y += offset;
+			new_rect
+		};
+
+		let mut selected_field = SideEffectField::Description;
+		let (mut desc_buffer, mut r#type, mut affects) =
+			if let Some(old_side_effect) = old_side_effect.clone() {
+				(
+					old_side_effect.description,
+					Some(old_side_effect.r#type),
+					Some(old_side_effect.affects),
+				)
+			} else {
+				(String::new(), None, None)
+			};
+		loop {
+			// TODO: avoid cloning
+			let desc_buffer_clone = desc_buffer.clone();
+			match self.messagebox_custom(
+				40,
+				6,
+				"Side effect",
+				|rect| {
+					let mut widgets: Vec<(Box<dyn Widget>, Rect)> = Vec::new();
+
+					widgets.push((
+						Box::new(Paragraph::new(Span::styled(
+							if let SideEffectField::Description = selected_field {
+								"Description: ".to_string()
+							} else {
+								format!("Description: {}", desc_buffer_clone)
+							},
+							if let SideEffectField::Description = selected_field {
+								*STYLE_SELECTED
+							} else {
+								Style::default()
+							},
+						))),
+						rect.clone(),
+					));
+					widgets.push((
+						Box::new(Paragraph::new(Span::styled(
+							format!(
+								"Type: {}",
+								if let Some(r#type) = r#type.as_ref() {
+									r#type.to_string()
+								} else {
+									"None".to_string()
+								}
+							),
+							if let SideEffectField::Type = selected_field {
+								*STYLE_SELECTED
+							} else {
+								Style::default()
+							},
+						))),
+						rect_offset(&rect, 1),
+					));
+					widgets.push((
+						Box::new(Paragraph::new(Span::styled(
+							format!(
+								"Affects: {}",
+								if let Some(affects) = affects.as_ref() {
+									affects.to_string()
+								} else {
+									"None".to_string()
+								}
+							),
+							if let SideEffectField::Affects = selected_field {
+								*STYLE_SELECTED
+							} else {
+								Style::default()
+							},
+						))),
+						rect_offset(&rect, 2),
+					));
+					widgets.push((
+						Box::new(Paragraph::new(Span::styled(
+							"Remove",
+							if let SideEffectField::Remove = selected_field {
+								*STYLE_SELECTED
+							} else {
+								Style::default()
+							},
+						))),
+						rect_offset(&rect, 4),
+					));
+					widgets.push((
+						Box::new(Paragraph::new(Span::styled(
+							"Done",
+							if let SideEffectField::Done = selected_field {
+								*STYLE_SELECTED
+							} else {
+								Style::default()
+							},
+						))),
+						rect_offset(&rect, 5),
+					));
+					widgets
+				},
+				if let SideEffectField::Description = selected_field {
+					Some(((0.into(), 13), &mut desc_buffer))
+				} else {
+					None
+				},
+			)? {
+				KeyCode::Enter => match selected_field {
+					SideEffectField::Description => selected_field = SideEffectField::Type,
+					SideEffectField::Type => {
+						r#type = Some(
+							match self.messagebox_with_options(
+								"Side effect type",
+								&["Adds status", "Uses skill"],
+								true,
+							)? {
+								Some(OrderNum(0)) => {
+									let status = loop {
+										if let Some(status) = self.choose_status(status_list)? {
+											break status;
+										}
+									};
+									SideEffectType::AddsStatus(status)
+								}
+								Some(OrderNum(1)) => SideEffectType::UsesSkill,
+								None => continue,
+								_ => unreachable!(),
+							},
+						);
+						selected_field = SideEffectField::Affects;
+					}
+					SideEffectField::Affects => {
+						affects = Some(
+							match self.messagebox_with_options(
+								"Affects",
+								&["Self", "Someone else", "Both"],
+								true,
+							)? {
+								Some(OrderNum(0)) => SideEffectAffects::Themselves,
+								Some(OrderNum(1)) => SideEffectAffects::SomeoneElse,
+								Some(OrderNum(2)) => SideEffectAffects::Both,
+								None => continue,
+								_ => unreachable!(),
+							},
+						);
+
+						selected_field = SideEffectField::Done;
+					}
+					SideEffectField::Remove => return Ok(None),
+					SideEffectField::Done => {
+						if r#type.is_some() && affects.is_some() {
+							break;
+						}
+					}
+				},
+				KeyCode::Up => {
+					selected_field = match selected_field {
+						SideEffectField::Description => SideEffectField::Done,
+						SideEffectField::Type => SideEffectField::Description,
+						SideEffectField::Affects => SideEffectField::Type,
+						SideEffectField::Remove => SideEffectField::Affects,
+						SideEffectField::Done => SideEffectField::Remove,
+					}
+				}
+				KeyCode::Down => {
+					selected_field = match selected_field {
+						SideEffectField::Description => SideEffectField::Type,
+						SideEffectField::Type => SideEffectField::Affects,
+						SideEffectField::Affects => SideEffectField::Remove,
+						SideEffectField::Remove => SideEffectField::Done,
+						SideEffectField::Done => SideEffectField::Description,
+					}
+				}
+				KeyCode::Esc => return Ok(old_side_effect),
+				_ => (),
+			}
+		}
+
+		Ok(Some(SideEffect {
+			description: desc_buffer,
+			r#type: r#type.unwrap(),
+			affects: affects.unwrap(),
+		}))
 	}
 }
