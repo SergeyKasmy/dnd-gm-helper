@@ -608,10 +608,11 @@ fn edit_player(
 						selected_field = selected_field.next(stat_list);
 					}
 					PlayerField::SkillSideEffect(skill_num) => {
-						player.skills[*skill_num].side_effect = ui.edit_side_effect(
-							player.skills[*skill_num].side_effect.take(),
-							status_list,
-						)?;
+						let old_side_effect = player.skills[*skill_num].side_effect.take();
+						log::trace!("Old side effect: {:?}", old_side_effect);
+						let new_side_effect = ui.edit_side_effect(old_side_effect, status_list)?;
+						log::trace!("New side effect: {:?}", new_side_effect);
+						player.skills[*skill_num].side_effect = new_side_effect;
 					}
 				}
 				buffer = None;

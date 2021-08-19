@@ -767,7 +767,7 @@ impl Term {
 				.into(),
 				Span::styled(
 					match &skill.side_effect {
-						Some(ref se) => format!("{:?}", se),
+						Some(se) => se.to_string(),
 						None => "None".to_string(),
 					},
 					sideeffect_style.unwrap_or_default(),
@@ -1175,10 +1175,16 @@ impl Term {
 		};
 
 		let mut selected_field = SideEffectField::Description;
-		// TODO: avoid cloning
-		let mut desc_buffer = old_side_effect.map(|x| x.description).unwrap_or_default();
-		let mut r#type: Option<SideEffectType> = None;
-		let mut affects: Option<SideEffectAffects> = None;
+		let (mut desc_buffer, mut r#type, mut affects) =
+			if let Some(old_side_effect) = old_side_effect {
+				(
+					old_side_effect.description,
+					Some(old_side_effect.r#type),
+					Some(old_side_effect.affects),
+				)
+			} else {
+				(String::new(), None, None)
+			};
 		loop {
 			// TODO: avoid cloning
 			let desc_buffer_clone = desc_buffer.clone();
@@ -1206,7 +1212,14 @@ impl Term {
 					));
 					widgets.push((
 						Box::new(Paragraph::new(Span::styled(
-							format!("Type: {:?}", r#type),
+							format!(
+								"Type: {}",
+								if let Some(r#type) = r#type.as_ref() {
+									r#type.to_string()
+								} else {
+									"None".to_string()
+								}
+							),
 							if let SideEffectField::Type = selected_field {
 								*STYLE_SELECTED
 							} else {
@@ -1217,7 +1230,14 @@ impl Term {
 					));
 					widgets.push((
 						Box::new(Paragraph::new(Span::styled(
-							format!("Affects: {:?}", affects),
+							format!(
+								"Affects: {}",
+								if let Some(affects) = affects.as_ref() {
+									affects.to_string()
+								} else {
+									"None".to_string()
+								}
+							),
 							if let SideEffectField::Affects = selected_field {
 								*STYLE_SELECTED
 							} else {

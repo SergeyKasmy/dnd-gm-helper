@@ -1,20 +1,7 @@
+use std::fmt;
+
 use crate::status::Status;
 use serde::{Deserialize, Serialize};
-
-/*
-impl fmt::Display for SideEffect {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(
-			f,
-			"{}",
-			match self {
-				SideEffect::AddsStatus => "Adds status",
-				SideEffect::UsesSkill => "Uses skill",
-			}
-		)
-	}
-}
-*/
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct SideEffect {
@@ -34,4 +21,33 @@ pub enum SideEffectAffects {
 	Themselves,
 	SomeoneElse,
 	Both,
+}
+
+impl fmt::Display for SideEffect {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{}", self.r#type)
+	}
+}
+
+impl fmt::Display for SideEffectType {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			SideEffectType::AddsStatus(status) => write!(f, "Adds status ({})", status.status_type),
+			SideEffectType::UsesSkill => write!(f, "Uses skill"),
+		}
+	}
+}
+
+impl fmt::Display for SideEffectAffects {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(
+			f,
+			"{}",
+			match self {
+				SideEffectAffects::Themselves => "Self",
+				SideEffectAffects::SomeoneElse => "Someone else",
+				SideEffectAffects::Both => "Both",
+			}
+		)
+	}
 }

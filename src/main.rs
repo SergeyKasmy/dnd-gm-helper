@@ -10,7 +10,7 @@ mod term;
 
 fn main() -> Result<()> {
 	WriteLogger::init(
-		LevelFilter::Debug,
+		LevelFilter::Trace,
 		Config::default(),
 		OpenOptions::new()
 			.create(true)
