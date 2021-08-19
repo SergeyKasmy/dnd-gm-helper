@@ -154,33 +154,58 @@ impl Term {
 		height: u16,
 		desc: &str,
 		contents: F,
+		// after which widget to place the buffer and with which offset + the buffer itself
+		mut with_buffer: Option<((OrderNum, u16), &mut String)>,
 	) -> Result<KeyCode>
 	where
 		// takes the rect of the window and returns the widgets and their coords
 		F: Fn(Rect) -> Vec<(Box<dyn Widget>, Rect)>,
 	{
 		self.term.borrow_mut().clear()?;
-		self.term.borrow_mut().draw(|frame| {
-			let messagebox_rect = Term::get_centered_box(frame.size(), width + 4, height + 4); // +4 cause of the the margins
-			let block = Block::default().borders(Borders::ALL).title(desc);
-			let inner_rect = {
-				let without_margin = block.inner(messagebox_rect);
-				let with_margin = Block::default().borders(Borders::ALL);
-				with_margin.inner(without_margin)
-			};
-			frame.render_widget(block, messagebox_rect);
+		loop {
+			self.term.borrow_mut().draw(|frame| {
+				let messagebox_rect = Term::get_centered_box(frame.size(), width + 4, height + 4); // +4 cause of the the margins
+				let block = Block::default().borders(Borders::ALL).title(desc);
+				let inner_rect = {
+					let without_margin = block.inner(messagebox_rect);
+					let with_margin = Block::default().borders(Borders::ALL);
+					with_margin.inner(without_margin)
+				};
+				frame.render_widget(block, messagebox_rect);
 
-			let widgets = contents(inner_rect);
-			for (mut widget, rect) in widgets {
-				frame.render_widget_ref(widget.as_mut(), rect);
-			}
-		})?;
+				let mut widgets = contents(inner_rect);
+				for (widget, rect) in widgets.iter_mut() {
+					frame.render_widget_ref(widget.as_mut(), *rect);
+				}
 
-		Ok(loop {
+				if let Some(((widget_id, offset), ref buffer)) = with_buffer {
+					frame.render_widget(
+						Paragraph::new(Span::styled(buffer.as_str(), *STYLE_SELECTED)),
+						{
+							let mut without_offset = widgets[*widget_id].1;
+							without_offset.x += offset;
+							without_offset
+						},
+					)
+				}
+			})?;
+
 			if let Event::Key(key) = read_event()? {
-				break key.code;
+				match key.code {
+					KeyCode::Backspace => {
+						if let Some((_, ref mut buffer)) = with_buffer {
+							buffer.pop();
+						}
+					}
+					KeyCode::Char(ch) => {
+						if let Some((_, ref mut buffer)) = with_buffer {
+							buffer.push(ch);
+						}
+					}
+					_ => return Ok(key.code),
+				}
 			}
-		})
+		}
 	}
 
 	pub fn messagebox_with_options_immediate<T: AsRef<str>>(
@@ -1150,52 +1175,63 @@ impl Term {
 		};
 
 		let mut selected_field = SideEffectField::Description;
-		// TODO: remove clone
+		// TODO: avoid cloning
 		let mut desc_buffer = side_effect.description.clone();
 		loop {
-			match self.messagebox_custom(40, 3, "Side effect", |rect| {
-				let mut widgets: Vec<(Box<dyn Widget>, Rect)> = Vec::new();
+			// TODO: avoid cloning
+			let desc_buffer_clone = desc_buffer.clone();
+			match self.messagebox_custom(
+				40,
+				3,
+				"Side effect",
+				|rect| {
+					let mut widgets: Vec<(Box<dyn Widget>, Rect)> = Vec::new();
 
-				widgets.push((
-					Box::new(Paragraph::new(Span::styled(
-						format!("Description: {}", desc_buffer),
-						if let SideEffectField::Description = selected_field {
-							*STYLE_SELECTED
-						} else {
-							Style::default()
-						},
-					))),
-					rect.clone(),
-				));
-				widgets.push((
-					Box::new(Paragraph::new(Span::styled(
-						format!("Type: {:?}", side_effect.r#type),
-						if let SideEffectField::Type = selected_field {
-							*STYLE_SELECTED
-						} else {
-							Style::default()
-						},
-					))),
-					rect_offset(&rect, 1),
-				));
-				widgets.push((
-					Box::new(Paragraph::new(Span::styled(
-						format!("Affects: {:?}", side_effect.affects),
-						if let SideEffectField::Affects = selected_field {
-							*STYLE_SELECTED
-						} else {
-							Style::default()
-						},
-					))),
-					rect_offset(&rect, 2),
-				));
-				widgets
-			})? {
-				KeyCode::Backspace => {
-					if let SideEffectField::Description = selected_field {
-						desc_buffer.pop();
-					}
-				}
+					widgets.push((
+						Box::new(Paragraph::new(Span::styled(
+							if let SideEffectField::Description = selected_field {
+								"Description: ".to_string()
+							} else {
+								format!("Description: {}", desc_buffer_clone)
+							},
+							if let SideEffectField::Description = selected_field {
+								*STYLE_SELECTED
+							} else {
+								Style::default()
+							},
+						))),
+						rect.clone(),
+					));
+					widgets.push((
+						Box::new(Paragraph::new(Span::styled(
+							format!("Type: {:?}", side_effect.r#type),
+							if let SideEffectField::Type = selected_field {
+								*STYLE_SELECTED
+							} else {
+								Style::default()
+							},
+						))),
+						rect_offset(&rect, 1),
+					));
+					widgets.push((
+						Box::new(Paragraph::new(Span::styled(
+							format!("Affects: {:?}", side_effect.affects),
+							if let SideEffectField::Affects = selected_field {
+								*STYLE_SELECTED
+							} else {
+								Style::default()
+							},
+						))),
+						rect_offset(&rect, 2),
+					));
+					widgets
+				},
+				if let SideEffectField::Description = selected_field {
+					Some(((0.into(), 13), &mut desc_buffer))
+				} else {
+					None
+				},
+			)? {
 				KeyCode::Enter => match selected_field {
 					SideEffectField::Description => selected_field = SideEffectField::Type,
 					SideEffectField::Type => {
@@ -1218,8 +1254,8 @@ impl Term {
 							true,
 						)? {
 							Some(OrderNum(0)) => SideEffectAffects::Themselves,
-							Some(OrderNum(1)) => SideEffectAffects::SomeoneElse(0.into()),
-							Some(OrderNum(2)) => SideEffectAffects::Both(0.into()),
+							Some(OrderNum(1)) => SideEffectAffects::SomeoneElse,
+							Some(OrderNum(2)) => SideEffectAffects::Both,
 							None => continue,
 							_ => unreachable!(),
 						};
@@ -1240,12 +1276,6 @@ impl Term {
 						SideEffectField::Affects => SideEffectField::Description,
 					}
 				}
-				KeyCode::Char(ch) => {
-					if let SideEffectField::Description = selected_field {
-						desc_buffer.push(ch);
-					}
-				}
-
 				KeyCode::Esc => return Ok(None),
 				_ => (),
 			}

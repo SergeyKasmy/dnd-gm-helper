@@ -35,6 +35,6 @@ pub enum SideEffectType {
 pub enum SideEffectAffects {
 	#[default]
 	Themselves,
-	SomeoneElse(Uid),
-	Both(Uid),
+	SomeoneElse,
+	Both,
 }
