@@ -590,20 +590,8 @@ fn edit_player(ui: &Ui, players: &mut Players, id: Uid, stat_list: &StatList) ->
 						selected_field = selected_field.next(stat_list);
 					}
 					PlayerField::SkillSideEffect(skill_num) => {
-						/*
-						let side_effect = match ui.messagebox_with_options(
-							"Side effects",
-							&["None", "Adds status", "Uses skill"],
-							true,
-						)? {
-							Some(OrderNum(0)) | None => None,
-							Some(OrderNum(1)) => Some(SideEffect::AddsStatus),
-							Some(OrderNum(2)) => Some(SideEffect::UsesSkill),
-							_ => unreachable!(),
-						};
-						*/
-
-						player.skills[*skill_num].side_effect = ui.edit_side_effect(None)?;
+						player.skills[*skill_num].side_effect =
+							ui.edit_side_effect(player.skills[*skill_num].side_effect.take())?;
 					}
 				}
 				buffer = None;
