@@ -484,6 +484,9 @@ fn edit_player(ui: &Ui, players: &mut Players, id: Uid, stat_list: &StatList) ->
 			}),
 		)? {
 			EditorAction::Edit(EditorActionEditMode::Char(ch)) => {
+				if let PlayerField::SkillSideEffect(_) = selected_field {
+					continue;
+				}
 				let buffer = buffer.as_mut().unwrap();
 				buffer.push(ch);
 				if let PlayerField::Stat(_) | PlayerField::SkillCD(_) = selected_field {
@@ -495,6 +498,9 @@ fn edit_player(ui: &Ui, players: &mut Players, id: Uid, stat_list: &StatList) ->
 				}
 			}
 			EditorAction::Edit(EditorActionEditMode::Pop) => {
+				if let PlayerField::SkillSideEffect(_) = selected_field {
+					continue;
+				}
 				let buffer = buffer.as_mut().unwrap();
 				buffer.pop();
 				if let PlayerField::Stat(_) | PlayerField::SkillCD(_) = selected_field {
