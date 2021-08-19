@@ -2,9 +2,7 @@ use crate::term::Term as Ui;
 use crate::term::{list_state_ext::ListStateExt, EditorMode};
 use anyhow::Result;
 use crossterm::event::KeyCode;
-use dnd_gm_helper::id::OrderNum;
-use dnd_gm_helper::side_effect::{SideEffect, SideEffectAffects, SideEffectType};
-use dnd_gm_helper::status::Status;
+use dnd_gm_helper::side_effect::{SideEffectAffects, SideEffectType};
 use dnd_gm_helper::{action_enums::EditorActionEditMode, skill::Skill};
 use dnd_gm_helper::{
 	action_enums::{
@@ -153,7 +151,7 @@ fn game_start(
 	'game: loop {
 		if let NextPlayerState::Pending = next_player {
 			log::debug!("Pending a next player change.");
-			if let Some(picked_player) = ui.pick_player(players)? {
+			if let Some(picked_player) = ui.pick_player(players, None)? {
 				log::debug!("Picked next player: {}", picked_player.name);
 				next_player = NextPlayerState::Picked(picked_player);
 			}
@@ -179,14 +177,18 @@ fn game_start(
 							Some(num) => num,
 							None => continue,
 						};
-						log::debug!("Chose skill #{}", input);
+						log::debug!("Choose skill #{}", input);
 						match get_player_mut!(players, id).skills.get_mut(*input) {
 							Some(skill) => {
 								if skill.r#use().is_err() {
 									ui.messagebox("Skill still on cooldown")?;
+									continue;
 								}
 							}
-							None => ui.messagebox("Number out of bounds")?,
+							None => {
+								ui.messagebox("Number out of bounds")?;
+								continue;
+							}
 						}
 						if let Some(side_effect) = &get_player!(players, id)
 							.skills
@@ -196,19 +198,29 @@ fn game_start(
 						{
 							match &side_effect.r#type {
 								SideEffectType::AddsStatus(status) => {
+									ui.messagebox("This skill has an \"Adds status\" side effect")?;
 									// TODO: avoid cloning
 									let affects = side_effect.affects.clone();
 									let status = status.clone();
 									if let SideEffectAffects::Themselves | SideEffectAffects::Both =
 										affects
 									{
+										ui.messagebox(format!(
+											"Applying status {} to the player",
+											status.status_type
+										))?;
 										get_player_mut!(players, id).add_status(status.clone())
 									}
 									if let SideEffectAffects::SomeoneElse
 									| SideEffectAffects::Both = affects
 									{
-										if let Some(target) =
-											ui.pick_player(players)?.map(|x| x.id.unwrap())
+										ui.messagebox(format!(
+											"Applying status {} to a different player",
+											status.status_type
+										))?;
+										if let Some(target) = ui
+											.pick_player(players, Some(id))?
+											.map(|x| x.id.unwrap())
 										{
 											get_player_mut!(players, target)
 												.add_status(status.clone());
@@ -216,26 +228,34 @@ fn game_start(
 									}
 								}
 								SideEffectType::UsesSkill => {
-									ui.messagebox("This skill has an \"Uses skill\" side effect. Continueing...")?;
-									if let Some(target) =
-										ui.pick_player(players)?.map(|x| x.id.unwrap())
-									{
-										let skill_names = get_player!(players, target)
-											.skills
-											.iter()
-											.map(|x| x.name.as_str())
-											.collect::<Vec<&str>>();
-										if let Some(chosen_skill) = ui.messagebox_with_options(
-											"Choose skill",
-											&skill_names,
-											true,
-										)? {
-											if get_player_mut!(players, target).skills
-												[*chosen_skill]
-												.r#use()
-												.is_err()
-											{
-												ui.messagebox("Skill already on cooldown...")?;
+									ui.messagebox("This skill has an \"Uses skill\" side effect. Choose a player and the skill to use")?;
+									loop {
+										if let Some(target) = ui
+											.pick_player(players, Some(id))?
+											.map(|x| x.id.unwrap())
+										{
+											let skill_names = get_player!(players, target)
+												.skills
+												.iter()
+												.map(|x| x.name.as_str())
+												.collect::<Vec<&str>>();
+											if let Some(chosen_skill) = ui.messagebox_with_options(
+												"Choose skill",
+												&skill_names,
+												true,
+											)? {
+												if get_player_mut!(players, target).skills
+													[*chosen_skill]
+													.r#use()
+													.is_err()
+												{
+													// FIXME: may get stuck in a loop if all skills
+													// are on cd. Do this somehow else
+													ui.messagebox("Skill already on cooldown. Choose a different one")?;
+													continue;
+												} else {
+													break;
+												}
 											}
 										}
 									}

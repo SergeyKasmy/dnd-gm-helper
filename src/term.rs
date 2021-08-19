@@ -421,8 +421,8 @@ impl Term {
 		))
 	}
 
-	pub fn messagebox(&self, desc: &str) -> Result<()> {
-		self.messagebox_with_options(desc, &["OK"], false)?;
+	pub fn messagebox(&self, desc: impl AsRef<str>) -> Result<()> {
+		self.messagebox_with_options(desc.as_ref(), &["OK"], false)?;
 		Ok(())
 	}
 
@@ -936,14 +936,40 @@ impl Term {
 		}
 	}
 
-	pub fn pick_player<'a>(&self, players: &'a Players) -> Result<Option<&'a Player>> {
+	// TODO: return the Uid instead
+	pub fn pick_player<'a>(
+		&self,
+		players: &'a Players,
+		ignore: Option<Uid>,
+	) -> Result<Option<&'a Player>> {
 		let player_list = players
 			.iter()
-			.map(|(_, x)| x.name.as_str())
+			.filter_map(|(id, x)| {
+				if let Some(id_to_ignore) = ignore {
+					if id_to_ignore == *id {
+						None
+					} else {
+						Some(x.name.as_str())
+					}
+				} else {
+					Some(x.name.as_str())
+				}
+			})
 			.collect::<Vec<&str>>();
 		return Ok(
 			match self.messagebox_with_options("Pick a player", &player_list, true)? {
-				Some(num) => Some(players.get_by_index(num).unwrap().1),
+				Some(num) => {
+					let chosen_player = players.get_by_index(num).unwrap();
+					if let Some(id_to_ignore) = ignore {
+						if *chosen_player.0 == id_to_ignore {
+							Some(players.get_by_index(OrderNum(*num + 1)).unwrap().1)
+						} else {
+							Some(chosen_player.1)
+						}
+					} else {
+						Some(chosen_player.1)
+					}
+				}
 				None => None,
 			},
 		);
