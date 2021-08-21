@@ -1,6 +1,6 @@
 pub mod list_state_ext;
 
-use crate::ui::{EditorMode, Ui};
+use crate::ui::Ui;
 use dnd_gm_helper::action_enums::{
 	EditorAction, EditorActionEditMode, EditorActionViewMode, GameAction, MainMenuAction,
 	SettingsAction,
@@ -34,6 +34,17 @@ use tui::{
 
 static STYLE_SELECTED: Lazy<Style> =
 	Lazy::new(|| Style::default().bg(Color::White).fg(Color::Black));
+
+#[derive(Clone)]
+pub enum EditorMode {
+	View {
+		selected: Option<OrderNum>,
+	},
+	Edit {
+		selected: OrderNum,
+		error: Option<String>,
+	},
+}
 
 enum StatusBarType {
 	Normal,
@@ -201,7 +212,7 @@ impl Term {
 		}
 	}
 
-	pub fn messagebox_with_options_immediate(
+	fn messagebox_with_options_immediate(
 		&self,
 		desc: impl AsRef<str>,
 		options: &[impl AsRef<str>],
@@ -332,7 +343,7 @@ impl Term {
 		}
 	}
 
-	pub fn player_stats<'a>(
+	fn player_stats<'a>(
 		player: &'a Player,
 		stat_list: &'a StatList,
 		rect: Rect,
@@ -568,6 +579,166 @@ impl Term {
 		}
 
 		stats
+	}
+
+	fn draw_editor<'a, F>(
+		&self,
+		mode: EditorMode,
+		list_title: Option<impl AsRef<str>>,
+		list_items: &[impl AsRef<str>],
+		details: Option<F>,
+	) -> Result<EditorAction>
+	where
+		F: Fn(Rect) -> Vec<(Table<'a>, Rect)>,
+	{
+		let block = {
+			let block = Block::default().borders(Borders::ALL);
+			if let Some(title) = list_title {
+				// FIXME: avoid to_string'ing
+				block.title(title.as_ref().to_string())
+			} else {
+				block
+			}
+		};
+		let list = List::new({
+			let mut v = Vec::with_capacity(list_items.len());
+			for item in list_items {
+				v.push(ListItem::new(item.as_ref()));
+			}
+			v
+		})
+		.highlight_symbol(">> ")
+		.block(block);
+		let mut list_state = ListState::default();
+		list_state.select_onum(match mode {
+			EditorMode::View { selected } => selected,
+			EditorMode::Edit { selected, .. } => Some(selected),
+		});
+
+		static STYLE_UNDERLINED: Lazy<Style> =
+			Lazy::new(|| Style::default().add_modifier(Modifier::UNDERLINED));
+		static DELIMITER: Lazy<Span> = Lazy::new(|| Span::raw(" | "));
+		// rendering loop
+		loop {
+			self.term.borrow_mut().draw(|frame| {
+				let (content_rect, statusbar_rect) = self.get_window_size(frame.size());
+
+				// statusbar
+				let editor_mode_no_errors = if let EditorMode::Edit { error, .. } = &mode {
+					error.is_none()
+				} else {
+					true
+				};
+				if editor_mode_no_errors {
+					let statusbar_text = match &mode {
+						EditorMode::View { selected: _ } => Spans::from(vec![
+							" ".into(),
+							Span::styled("A", *STYLE_UNDERLINED),
+							"dd".into(),
+							DELIMITER.clone(),
+							Span::styled("E", *STYLE_UNDERLINED),
+							"dit".into(),
+							DELIMITER.clone(),
+							Span::styled("D", *STYLE_UNDERLINED),
+							"elete".into(),
+							DELIMITER.clone(),
+							Span::styled("Q", *STYLE_UNDERLINED),
+							"uit".into(),
+						]),
+						EditorMode::Edit { .. } => Spans::from(" Edit mode. Press ESC to quit"),
+					};
+
+					frame.render_widget(
+						Term::stylize_statusbar(statusbar_text, StatusBarType::Normal),
+						statusbar_rect,
+					);
+				} else {
+					// always true here
+					if let EditorMode::Edit { error, .. } = &mode {
+						frame.render_widget(
+							Term::stylize_statusbar(
+								error.as_deref().unwrap(),
+								StatusBarType::Error,
+							),
+							statusbar_rect,
+						);
+					}
+				}
+
+				let [list_rect, details_rect] = {
+					if details.is_some() {
+						let tables = Layout::default()
+							.direction(Direction::Horizontal)
+							.constraints(
+								[Constraint::Percentage(20), Constraint::Percentage(80)].as_ref(),
+							)
+							.split(content_rect);
+
+						<[Rect; 2]>::try_from(tables).ok().unwrap()
+					} else {
+						[content_rect, Rect::default()]
+					}
+				};
+
+				frame.render_stateful_widget(list.clone(), list_rect, &mut list_state);
+
+				if let Some(details) = details.as_ref() {
+					let mut widgets = details(details_rect);
+					while let Some((widget, widget_rect)) = widgets.pop() {
+						frame.render_widget(widget, widget_rect);
+					}
+				}
+			})?;
+
+			if let Event::Key(key) = read_event()? {
+				match mode {
+					EditorMode::View { .. } => match key.code {
+						KeyCode::Char(ch) => match ch {
+							'a' => return Ok(EditorAction::View(EditorActionViewMode::Add)),
+							'e' if list_state.selected().is_some() => {
+								return Ok(EditorAction::View(EditorActionViewMode::Edit(
+									list_state.selected_onum().unwrap(),
+								)))
+							}
+							'd' if list_state.selected().is_some() => {
+								return Ok(EditorAction::View(EditorActionViewMode::Delete(
+									list_state.selected_onum().unwrap(),
+								)))
+							}
+							'q' => return Ok(EditorAction::View(EditorActionViewMode::Quit)),
+							_ => (),
+						},
+						KeyCode::Down => return Ok(EditorAction::View(EditorActionViewMode::Next)),
+
+						KeyCode::Up => return Ok(EditorAction::View(EditorActionViewMode::Prev)),
+
+						KeyCode::Esc => return Ok(EditorAction::View(EditorActionViewMode::Quit)),
+						_ => (),
+					},
+					EditorMode::Edit { .. } => match key.code {
+						KeyCode::Char(ch) => {
+							return Ok(EditorAction::Edit(EditorActionEditMode::Char(ch)));
+						}
+						KeyCode::Up => {
+							return Ok(EditorAction::Edit(EditorActionEditMode::Prev));
+						}
+						KeyCode::Down => {
+							return Ok(EditorAction::Edit(EditorActionEditMode::Next));
+						}
+						KeyCode::Backspace => {
+							return Ok(EditorAction::Edit(EditorActionEditMode::Pop));
+						}
+						KeyCode::Enter => {
+							return Ok(EditorAction::Edit(EditorActionEditMode::DoneWithField));
+						}
+						KeyCode::Esc => {
+							return Ok(EditorAction::Edit(EditorActionEditMode::Done));
+						}
+						_ => (),
+					},
+				}
+			}
+		}
 	}
 }
 
@@ -895,166 +1066,6 @@ impl Ui for Term {
 				None => None,
 			},
 		);
-	}
-
-	fn draw_editor<'a, F>(
-		&self,
-		mode: EditorMode,
-		list_title: Option<impl AsRef<str>>,
-		list_items: &[impl AsRef<str>],
-		details: Option<F>,
-	) -> Result<EditorAction>
-	where
-		F: Fn(Rect) -> Vec<(Table<'a>, Rect)>,
-	{
-		let block = {
-			let block = Block::default().borders(Borders::ALL);
-			if let Some(title) = list_title {
-				// FIXME: avoid to_string'ing
-				block.title(title.as_ref().to_string())
-			} else {
-				block
-			}
-		};
-		let list = List::new({
-			let mut v = Vec::with_capacity(list_items.len());
-			for item in list_items {
-				v.push(ListItem::new(item.as_ref()));
-			}
-			v
-		})
-		.highlight_symbol(">> ")
-		.block(block);
-		let mut list_state = ListState::default();
-		list_state.select_onum(match mode {
-			EditorMode::View { selected } => selected,
-			EditorMode::Edit { selected, .. } => Some(selected),
-		});
-
-		static STYLE_UNDERLINED: Lazy<Style> =
-			Lazy::new(|| Style::default().add_modifier(Modifier::UNDERLINED));
-		static DELIMITER: Lazy<Span> = Lazy::new(|| Span::raw(" | "));
-		// rendering loop
-		loop {
-			self.term.borrow_mut().draw(|frame| {
-				let (content_rect, statusbar_rect) = self.get_window_size(frame.size());
-
-				// statusbar
-				let editor_mode_no_errors = if let EditorMode::Edit { error, .. } = &mode {
-					error.is_none()
-				} else {
-					true
-				};
-				if editor_mode_no_errors {
-					let statusbar_text = match &mode {
-						EditorMode::View { selected: _ } => Spans::from(vec![
-							" ".into(),
-							Span::styled("A", *STYLE_UNDERLINED),
-							"dd".into(),
-							DELIMITER.clone(),
-							Span::styled("E", *STYLE_UNDERLINED),
-							"dit".into(),
-							DELIMITER.clone(),
-							Span::styled("D", *STYLE_UNDERLINED),
-							"elete".into(),
-							DELIMITER.clone(),
-							Span::styled("Q", *STYLE_UNDERLINED),
-							"uit".into(),
-						]),
-						EditorMode::Edit { .. } => Spans::from(" Edit mode. Press ESC to quit"),
-					};
-
-					frame.render_widget(
-						Term::stylize_statusbar(statusbar_text, StatusBarType::Normal),
-						statusbar_rect,
-					);
-				} else {
-					// always true here
-					if let EditorMode::Edit { error, .. } = &mode {
-						frame.render_widget(
-							Term::stylize_statusbar(
-								error.as_deref().unwrap(),
-								StatusBarType::Error,
-							),
-							statusbar_rect,
-						);
-					}
-				}
-
-				let [list_rect, details_rect] = {
-					if details.is_some() {
-						let tables = Layout::default()
-							.direction(Direction::Horizontal)
-							.constraints(
-								[Constraint::Percentage(20), Constraint::Percentage(80)].as_ref(),
-							)
-							.split(content_rect);
-
-						<[Rect; 2]>::try_from(tables).ok().unwrap()
-					} else {
-						[content_rect, Rect::default()]
-					}
-				};
-
-				frame.render_stateful_widget(list.clone(), list_rect, &mut list_state);
-
-				if let Some(details) = details.as_ref() {
-					let mut widgets = details(details_rect);
-					while let Some((widget, widget_rect)) = widgets.pop() {
-						frame.render_widget(widget, widget_rect);
-					}
-				}
-			})?;
-
-			if let Event::Key(key) = read_event()? {
-				match mode {
-					EditorMode::View { .. } => match key.code {
-						KeyCode::Char(ch) => match ch {
-							'a' => return Ok(EditorAction::View(EditorActionViewMode::Add)),
-							'e' if list_state.selected().is_some() => {
-								return Ok(EditorAction::View(EditorActionViewMode::Edit(
-									list_state.selected_onum().unwrap(),
-								)))
-							}
-							'd' if list_state.selected().is_some() => {
-								return Ok(EditorAction::View(EditorActionViewMode::Delete(
-									list_state.selected_onum().unwrap(),
-								)))
-							}
-							'q' => return Ok(EditorAction::View(EditorActionViewMode::Quit)),
-							_ => (),
-						},
-						KeyCode::Down => return Ok(EditorAction::View(EditorActionViewMode::Next)),
-
-						KeyCode::Up => return Ok(EditorAction::View(EditorActionViewMode::Prev)),
-
-						KeyCode::Esc => return Ok(EditorAction::View(EditorActionViewMode::Quit)),
-						_ => (),
-					},
-					EditorMode::Edit { .. } => match key.code {
-						KeyCode::Char(ch) => {
-							return Ok(EditorAction::Edit(EditorActionEditMode::Char(ch)));
-						}
-						KeyCode::Up => {
-							return Ok(EditorAction::Edit(EditorActionEditMode::Prev));
-						}
-						KeyCode::Down => {
-							return Ok(EditorAction::Edit(EditorActionEditMode::Next));
-						}
-						KeyCode::Backspace => {
-							return Ok(EditorAction::Edit(EditorActionEditMode::Pop));
-						}
-						KeyCode::Enter => {
-							return Ok(EditorAction::Edit(EditorActionEditMode::DoneWithField));
-						}
-						KeyCode::Esc => {
-							return Ok(EditorAction::Edit(EditorActionEditMode::Done));
-						}
-						_ => (),
-					},
-				}
-			}
-		}
 	}
 
 	fn draw_character_menu(

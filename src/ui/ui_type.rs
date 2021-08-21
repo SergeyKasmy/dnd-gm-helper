@@ -1,8 +1,8 @@
-use super::{term::Term, EditorMode, Ui};
+use super::{term::Term, Ui};
 
 use anyhow::Result;
 use dnd_gm_helper::{
-	action_enums::{EditorAction, EditorActionViewMode, MainMenuAction, SettingsAction},
+	action_enums::{EditorActionViewMode, MainMenuAction, SettingsAction},
 	id::{OrderNum, Uid},
 	list::SetList,
 	player::{Player, Players},
@@ -74,22 +74,6 @@ impl Ui for UiType {
 	) -> Result<Option<&'a Player>> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.pick_player(players, ignore),
-		}
-	}
-
-	fn draw_editor<'a, F>(
-		&self,
-		mode: EditorMode,
-		list_title: Option<impl AsRef<str>>,
-		list_items: &[impl AsRef<str>],
-		details: Option<F>,
-	) -> Result<EditorAction>
-	where
-		// TODO: Use F: Fn(Rect) -> Vec<(Box<dyn Widget>, Rect)>,
-		F: Fn(tui::layout::Rect) -> Vec<(tui::widgets::Table<'a>, tui::layout::Rect)>,
-	{
-		match &self {
-			Self::TermTui(term_tui) => term_tui.draw_editor(mode, list_title, list_items, details),
 		}
 	}
 

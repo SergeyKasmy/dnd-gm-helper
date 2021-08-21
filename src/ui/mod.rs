@@ -3,9 +3,7 @@ pub mod ui_type;
 
 use anyhow::Result;
 use dnd_gm_helper::{
-	action_enums::{
-		EditorAction, EditorActionViewMode, GameAction, MainMenuAction, SettingsAction,
-	},
+	action_enums::{EditorActionViewMode, GameAction, MainMenuAction, SettingsAction},
 	id::{OrderNum, Uid},
 	list::SetList,
 	player::{Player, Players},
@@ -14,19 +12,6 @@ use dnd_gm_helper::{
 	stats::StatList,
 	status::{Status, StatusList},
 };
-// TODO: get rid of this
-use tui::{layout::Rect, widgets::Table};
-
-#[derive(Clone)]
-pub enum EditorMode {
-	View {
-		selected: Option<OrderNum>,
-	},
-	Edit {
-		selected: OrderNum,
-		error: Option<String>,
-	},
-}
 
 pub trait Ui {
 	fn draw_menu(
@@ -45,17 +30,6 @@ pub trait Ui {
 		players: &'a Players,
 		ignore: Option<Uid>,
 	) -> Result<Option<&'a Player>>;
-
-	fn draw_editor<'a, F>(
-		&self,
-		mode: EditorMode,
-		list_title: Option<impl AsRef<str>>,
-		list_items: &[impl AsRef<str>],
-		details: Option<F>,
-	) -> Result<EditorAction>
-	where
-		// TODO: Use F: Fn(Rect) -> Vec<(Box<dyn Widget>, Rect)>,
-		F: Fn(Rect) -> Vec<(Table<'a>, Rect)>;
 
 	fn draw_character_menu(
 		&self,
