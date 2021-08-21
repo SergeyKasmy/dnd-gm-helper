@@ -1,12 +1,14 @@
 #![feature(try_blocks)]
 
+use crate::client::Client;
+
 use anyhow::Result;
 use log::LevelFilter;
 use simplelog::{Config, WriteLogger};
 use std::fs::OpenOptions;
 
 mod client;
-mod term;
+mod ui;
 
 fn main() -> Result<()> {
 	WriteLogger::init(
@@ -17,5 +19,5 @@ fn main() -> Result<()> {
 			.append(true)
 			.open("dnd.log")?,
 	)?;
-	client::run()
+	Client::new()?.run()
 }

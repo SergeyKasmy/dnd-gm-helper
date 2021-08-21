@@ -1,8 +1,6 @@
 pub mod list_state_ext;
 
-use crate::term::list_state_ext::ListStateExt;
-use anyhow::Result;
-use crossterm::event::{read as read_event, Event, KeyCode};
+use crate::ui::{EditorMode, Ui};
 use dnd_gm_helper::action_enums::{
 	EditorAction, EditorActionEditMode, EditorActionViewMode, GameAction, MainMenuAction,
 	SettingsAction,
@@ -15,6 +13,10 @@ use dnd_gm_helper::side_effect::{SideEffect, SideEffectAffects, SideEffectType};
 use dnd_gm_helper::skill::Skill;
 use dnd_gm_helper::stats::StatList;
 use dnd_gm_helper::status::{Status, StatusCooldownType, StatusList};
+use list_state_ext::ListStateExt;
+
+use anyhow::Result;
+use crossterm::event::{read as read_event, Event, KeyCode};
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use std::cell::RefCell;
@@ -32,17 +34,6 @@ use tui::{
 
 static STYLE_SELECTED: Lazy<Style> =
 	Lazy::new(|| Style::default().bg(Color::White).fg(Color::Black));
-
-#[derive(Clone)]
-pub enum EditorMode {
-	View {
-		selected: Option<OrderNum>,
-	},
-	Edit {
-		selected: OrderNum,
-		error: Option<String>,
-	},
-}
 
 enum StatusBarType {
 	Normal,
@@ -427,219 +418,6 @@ impl Term {
 		Ok(())
 	}
 
-	pub fn draw_menu<T>(&self, items: &[&str], statusbar_text: T) -> Result<Option<usize>>
-	where
-		T: AsRef<str>,
-	{
-		self.term.borrow_mut().clear()?;
-
-		let mut list_state = ListState::default();
-		list_state.select(Some(0));
-		loop {
-			self.term.borrow_mut().draw(|frame| {
-				let longest_len = items.iter().fold(0, |acc, item| {
-					let len = item.chars().count();
-					if len > acc {
-						len
-					} else {
-						acc
-					}
-				});
-				let list = List::new(
-					items
-						.iter()
-						.map(|item| ListItem::new(*item))
-						.collect::<Vec<ListItem>>(),
-				)
-				.highlight_style(Style::default().bg(Color::White).fg(Color::Black));
-
-				let (win_rect, statusbar_rect) = self.get_window_size(frame.size());
-				let menu_location = Term::get_centered_box(
-					win_rect,
-					longest_len as u16 + 4,
-					items.len() as u16 + 4,
-				);
-				frame.render_stateful_widget(list, menu_location, &mut list_state);
-				frame.render_widget(
-					Term::stylize_statusbar(statusbar_text.as_ref(), StatusBarType::Normal),
-					statusbar_rect,
-				);
-			})?;
-
-			if let Event::Key(key) = read_event()? {
-				match key.code {
-					KeyCode::Esc => return Ok(None),
-					KeyCode::Char(ch) => match ch {
-						'0'..='9' => {
-							let i = ch.to_digit(10).unwrap() as usize;
-							if let Some(id) = i.checked_sub(1) {
-								if id < items.len() {
-									return Ok(Some(id));
-								}
-							}
-						}
-						'q' => return Ok(None),
-						_ => (),
-					},
-					KeyCode::Down => {
-						list_state.next(items.len());
-					}
-					KeyCode::Up => {
-						list_state.prev(items.len());
-					}
-					KeyCode::Enter => {
-						if let Some(i) = list_state.selected() {
-							assert!(i < items.len());
-							return Ok(Some(i));
-						}
-					}
-					_ => (),
-				}
-			}
-		}
-	}
-
-	pub fn draw_main_menu(&self) -> Result<MainMenuAction> {
-		let items = [
-			"Start game",
-			"Manage characters",
-			"Change player order",
-			"Settings",
-			"Save and quit",
-		];
-
-		let statusbar_text = format!(" dnd-gm-helper v{}", env!("CARGO_PKG_VERSION"));
-
-		loop {
-			return Ok(match self.draw_menu(&items, statusbar_text.as_str())? {
-				Some(0) => MainMenuAction::Play,
-				Some(1) => MainMenuAction::EditPlayers,
-				Some(2) => MainMenuAction::ReorderPlayers,
-				Some(3) => MainMenuAction::Settings,
-				Some(4) | None => {
-					if self.messagebox_yn("Are you sure you want to quit?")? {
-						MainMenuAction::Quit
-					} else {
-						continue;
-					}
-				}
-				_ => unreachable!(),
-			});
-		}
-	}
-
-	pub fn draw_settings_menu(&self) -> Result<SettingsAction> {
-		let items = ["Edit Stats", "Edit Statuses", "Go back..."];
-
-		let statusbar_text = " Settings";
-
-		Ok(match self.draw_menu(&items, statusbar_text)? {
-			Some(0) => SettingsAction::EditStats,
-			Some(1) => SettingsAction::EditStatuses,
-			Some(2) | None => SettingsAction::GoBack,
-			_ => unreachable!(),
-		})
-	}
-
-	pub fn draw_game(&self, player: &Player, stat_list: &StatList) -> Result<GameAction> {
-		loop {
-			self.term.borrow_mut().draw(|frame| {
-				let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
-
-				let mut player_stats =
-					Term::player_stats(player, stat_list, window_rect, None, None, None);
-				while let Some((table, table_rect)) = player_stats.pop() {
-					frame.render_widget(table, table_rect);
-				}
-
-				let delimiter = Span::raw(" | ");
-				let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
-				let statusbar_text = Spans::from(vec![
-					" Use ".into(),
-					Span::styled("s", style_underlined),
-					"kill".into(),
-					delimiter.clone(),
-					Span::styled("A", style_underlined),
-					"dd status".into(),
-					delimiter.clone(),
-					Span::styled("D", style_underlined),
-					"rain status".into(),
-					delimiter.clone(),
-					Span::styled("C", style_underlined),
-					"lear statuses".into(),
-					", ".into(),
-					"skill CD :".into(),
-					Span::styled("v", style_underlined),
-					delimiter.clone(),
-					"Manage ".into(),
-					Span::styled("m", style_underlined),
-					"oney".into(),
-					delimiter.clone(),
-					"Next turn: \"".into(),
-					Span::styled(" ", style_underlined),
-					"\"".into(),
-					delimiter.clone(),
-					"Ski".into(),
-					Span::styled("p", style_underlined),
-					" turn".into(),
-					delimiter.clone(),
-					"Pick next pl.: ".into(),
-					Span::styled("o", style_underlined),
-					delimiter.clone(),
-					Span::styled("Q", style_underlined),
-					"uit".into(),
-				]);
-
-				frame.render_widget(
-					Term::stylize_statusbar(statusbar_text, StatusBarType::Normal),
-					statusbar_rect,
-				);
-			})?;
-
-			if let Event::Key(key) = read_event()? {
-				match key.code {
-					KeyCode::Char(ch) => match ch {
-						's' => return Ok(GameAction::UseSkill),
-						'a' => return Ok(GameAction::AddStatus),
-						'd' => {
-							match self.messagebox_with_options(
-								"Which statuses to drain?",
-								&["On attacking", "On getting attacked", "Manual"],
-								true,
-							)? {
-								Some(OrderNum(0)) => {
-									return Ok(GameAction::DrainStatus(
-										StatusCooldownType::OnAttacking,
-									))
-								}
-								Some(OrderNum(1)) => {
-									return Ok(GameAction::DrainStatus(
-										StatusCooldownType::OnGettingAttacked,
-									))
-								}
-								Some(OrderNum(2)) => {
-									return Ok(GameAction::DrainStatus(StatusCooldownType::Manual))
-								}
-								_ => (),
-							}
-						}
-						'c' => return Ok(GameAction::ClearStatuses),
-						'v' => return Ok(GameAction::ResetSkillsCD),
-						//'m' => return GameAction::ManageMoney,
-						'm' => self.messagebox("Turned off for now.")?,
-						' ' => return Ok(GameAction::MakeTurn),
-						'p' => return Ok(GameAction::SkipTurn),
-						'o' => return Ok(GameAction::NextPlayerPick),
-						'q' => return Ok(GameAction::Quit),
-						_ => (),
-					},
-					KeyCode::Esc => return Ok(GameAction::Quit),
-					_ => (),
-				}
-			}
-		}
-	}
-
 	pub fn player_stats<'a>(
 		player: &'a Player,
 		stat_list: &'a StatList,
@@ -877,8 +655,224 @@ impl Term {
 
 		stats
 	}
+}
 
-	pub fn choose_skill(&self, skills: &[Skill]) -> Result<Option<OrderNum>> {
+impl Ui for Term {
+	fn draw_menu(
+		&self,
+		items: &[impl AsRef<str>],
+		statusbar_text: impl AsRef<str>,
+	) -> Result<Option<usize>> {
+		self.term.borrow_mut().clear()?;
+
+		let mut list_state = ListState::default();
+		list_state.select(Some(0));
+		loop {
+			self.term.borrow_mut().draw(|frame| {
+				let longest_len = items.iter().fold(0, |acc, item| {
+					let len = item.as_ref().chars().count();
+					if len > acc {
+						len
+					} else {
+						acc
+					}
+				});
+				let list = List::new(
+					items
+						.iter()
+						.map(|item| ListItem::new(item.as_ref()))
+						.collect::<Vec<ListItem>>(),
+				)
+				.highlight_style(Style::default().bg(Color::White).fg(Color::Black));
+
+				let (win_rect, statusbar_rect) = self.get_window_size(frame.size());
+				let menu_location = Term::get_centered_box(
+					win_rect,
+					longest_len as u16 + 4,
+					items.len() as u16 + 4,
+				);
+				frame.render_stateful_widget(list, menu_location, &mut list_state);
+				frame.render_widget(
+					Term::stylize_statusbar(statusbar_text.as_ref(), StatusBarType::Normal),
+					statusbar_rect,
+				);
+			})?;
+
+			if let Event::Key(key) = read_event()? {
+				match key.code {
+					KeyCode::Esc => return Ok(None),
+					KeyCode::Char(ch) => match ch {
+						'0'..='9' => {
+							let i = ch.to_digit(10).unwrap() as usize;
+							if let Some(id) = i.checked_sub(1) {
+								if id < items.len() {
+									return Ok(Some(id));
+								}
+							}
+						}
+						'q' => return Ok(None),
+						_ => (),
+					},
+					KeyCode::Down => {
+						list_state.next(items.len());
+					}
+					KeyCode::Up => {
+						list_state.prev(items.len());
+					}
+					KeyCode::Enter => {
+						if let Some(i) = list_state.selected() {
+							assert!(i < items.len());
+							return Ok(Some(i));
+						}
+					}
+					_ => (),
+				}
+			}
+		}
+	}
+
+	fn draw_main_menu(&self) -> Result<MainMenuAction> {
+		let items = [
+			"Start game",
+			"Manage characters",
+			"Change player order",
+			"Settings",
+			"Save and quit",
+		];
+
+		let statusbar_text = format!(" dnd-gm-helper v{}", env!("CARGO_PKG_VERSION"));
+
+		loop {
+			return Ok(match self.draw_menu(&items, statusbar_text.as_str())? {
+				Some(0) => MainMenuAction::Play,
+				Some(1) => MainMenuAction::EditPlayers,
+				Some(2) => MainMenuAction::ReorderPlayers,
+				Some(3) => MainMenuAction::Settings,
+				Some(4) | None => {
+					if self.messagebox_yn("Are you sure you want to quit?")? {
+						MainMenuAction::Quit
+					} else {
+						continue;
+					}
+				}
+				_ => unreachable!(),
+			});
+		}
+	}
+
+	fn draw_settings_menu(&self) -> Result<SettingsAction> {
+		let items = ["Edit Stats", "Edit Statuses", "Go back..."];
+
+		let statusbar_text = " Settings";
+
+		Ok(match self.draw_menu(&items, statusbar_text)? {
+			Some(0) => SettingsAction::EditStats,
+			Some(1) => SettingsAction::EditStatuses,
+			Some(2) | None => SettingsAction::GoBack,
+			_ => unreachable!(),
+		})
+	}
+
+	fn draw_game(&self, player: &Player, stat_list: &StatList) -> Result<GameAction> {
+		loop {
+			self.term.borrow_mut().draw(|frame| {
+				let (window_rect, statusbar_rect) = self.get_window_size(frame.size());
+
+				let mut player_stats =
+					Term::player_stats(player, stat_list, window_rect, None, None, None);
+				while let Some((table, table_rect)) = player_stats.pop() {
+					frame.render_widget(table, table_rect);
+				}
+
+				let delimiter = Span::raw(" | ");
+				let style_underlined = Style::default().add_modifier(Modifier::UNDERLINED);
+				let statusbar_text = Spans::from(vec![
+					" Use ".into(),
+					Span::styled("s", style_underlined),
+					"kill".into(),
+					delimiter.clone(),
+					Span::styled("A", style_underlined),
+					"dd status".into(),
+					delimiter.clone(),
+					Span::styled("D", style_underlined),
+					"rain status".into(),
+					delimiter.clone(),
+					Span::styled("C", style_underlined),
+					"lear statuses".into(),
+					", ".into(),
+					"skill CD :".into(),
+					Span::styled("v", style_underlined),
+					delimiter.clone(),
+					"Manage ".into(),
+					Span::styled("m", style_underlined),
+					"oney".into(),
+					delimiter.clone(),
+					"Next turn: \"".into(),
+					Span::styled(" ", style_underlined),
+					"\"".into(),
+					delimiter.clone(),
+					"Ski".into(),
+					Span::styled("p", style_underlined),
+					" turn".into(),
+					delimiter.clone(),
+					"Pick next pl.: ".into(),
+					Span::styled("o", style_underlined),
+					delimiter.clone(),
+					Span::styled("Q", style_underlined),
+					"uit".into(),
+				]);
+
+				frame.render_widget(
+					Term::stylize_statusbar(statusbar_text, StatusBarType::Normal),
+					statusbar_rect,
+				);
+			})?;
+
+			if let Event::Key(key) = read_event()? {
+				match key.code {
+					KeyCode::Char(ch) => match ch {
+						's' => return Ok(GameAction::UseSkill),
+						'a' => return Ok(GameAction::AddStatus),
+						'd' => {
+							match self.messagebox_with_options(
+								"Which statuses to drain?",
+								&["On attacking", "On getting attacked", "Manual"],
+								true,
+							)? {
+								Some(OrderNum(0)) => {
+									return Ok(GameAction::DrainStatus(
+										StatusCooldownType::OnAttacking,
+									))
+								}
+								Some(OrderNum(1)) => {
+									return Ok(GameAction::DrainStatus(
+										StatusCooldownType::OnGettingAttacked,
+									))
+								}
+								Some(OrderNum(2)) => {
+									return Ok(GameAction::DrainStatus(StatusCooldownType::Manual))
+								}
+								_ => (),
+							}
+						}
+						'c' => return Ok(GameAction::ClearStatuses),
+						'v' => return Ok(GameAction::ResetSkillsCD),
+						//'m' => return GameAction::ManageMoney,
+						'm' => self.messagebox("Turned off for now.")?,
+						' ' => return Ok(GameAction::MakeTurn),
+						'p' => return Ok(GameAction::SkipTurn),
+						'o' => return Ok(GameAction::NextPlayerPick),
+						'q' => return Ok(GameAction::Quit),
+						_ => (),
+					},
+					KeyCode::Esc => return Ok(GameAction::Quit),
+					_ => (),
+				}
+			}
+		}
+	}
+
+	fn choose_skill(&self, skills: &[Skill]) -> Result<Option<OrderNum>> {
 		self.messagebox_with_options(
 			"Select skill",
 			skills
@@ -890,7 +884,7 @@ impl Term {
 		)
 	}
 
-	pub fn choose_status(&self, status_list: &StatusList) -> Result<Option<Status>> {
+	fn choose_status(&self, status_list: &StatusList) -> Result<Option<Status>> {
 		let status_type = match self.messagebox_with_options(
 			"Choose a status",
 			&status_list.get_names(),
@@ -932,7 +926,7 @@ impl Term {
 		)))
 	}
 
-	pub fn get_money_amount(&self) -> Result<i64> {
+	fn get_money_amount(&self) -> Result<i64> {
 		loop {
 			let input = self.messagebox_with_input_field("Add or remove money")?;
 
@@ -951,7 +945,7 @@ impl Term {
 	}
 
 	// TODO: return the Uid instead
-	pub fn pick_player<'a>(
+	fn pick_player<'a>(
 		&self,
 		players: &'a Players,
 		ignore: Option<Uid>,
@@ -989,18 +983,14 @@ impl Term {
 		);
 	}
 
-	pub fn draw_editor<'a, T, TT, F>(
+	fn draw_editor<'a, F>(
 		&self,
 		mode: EditorMode,
-		list_title: Option<T>,
-		list_items: &'a [TT],
+		list_title: Option<impl AsRef<str>>,
+		list_items: &[impl AsRef<str>],
 		details: Option<F>,
 	) -> Result<EditorAction>
 	where
-		T: AsRef<str>,
-		// TODO: why 2 bounds?
-		TT: AsRef<str>,
-		// TODO: Use F: Fn(Rect) -> Vec<(Box<dyn Widget>, Rect)>,
 		F: Fn(Rect) -> Vec<(Table<'a>, Rect)>,
 	{
 		let block = {
@@ -1153,7 +1143,7 @@ impl Term {
 		}
 	}
 
-	pub fn draw_character_menu(
+	fn draw_character_menu(
 		&self,
 		players: &Players,
 		stat_list: &StatList,
@@ -1200,7 +1190,7 @@ impl Term {
 		}
 	}
 
-	pub fn draw_setlist(&self, setlist: &SetList<String>) -> Result<EditorActionViewMode> {
+	fn draw_setlist(&self, setlist: &SetList<String>) -> Result<EditorActionViewMode> {
 		log::debug!("In the statlist menu...");
 		// TODO: create a UI agnostic list state tracker
 		// TODO: preselect the first
@@ -1230,7 +1220,7 @@ impl Term {
 		}
 	}
 
-	pub fn edit_player(
+	fn edit_player(
 		&self,
 		players: &Players,
 		id: Uid,
@@ -1445,12 +1435,12 @@ impl Term {
 		Ok(Some(player_to_edit))
 	}
 
-	pub fn edit_setlist(
+	fn edit_setlist(
 		&self,
 		list: &SetList<String>,
 		item: String,
 		item_ordernum: OrderNum,
-		title: Option<&str>,
+		title: Option<impl AsRef<str>>,
 	) -> Result<String> {
 		let mut buffer = item;
 		loop {
@@ -1464,7 +1454,7 @@ impl Term {
 					selected: item_ordernum,
 					error: None,
 				},
-				title,
+				title.as_ref(),
 				&item_names,
 				None::<fn(_) -> _>,
 			)? {
@@ -1493,7 +1483,7 @@ impl Term {
 		Ok(buffer)
 	}
 
-	pub fn edit_side_effect(
+	fn edit_side_effect(
 		&self,
 		old_side_effect: Option<SideEffect>,
 		status_list: &StatusList,
@@ -1692,11 +1682,7 @@ impl Term {
 		}))
 	}
 
-	pub fn reorder_players(
-		&self,
-		old_player_order: &[Uid],
-		players: &mut Players,
-	) -> Result<Vec<Uid>> {
+	fn reorder_players(&self, old_player_order: &[Uid], players: &mut Players) -> Result<Vec<Uid>> {
 		let mut player_list: IndexMap<Uid, &str> = old_player_order
 			.iter()
 			.map(|&id| (id, players.get(id).unwrap().name.as_str()))
