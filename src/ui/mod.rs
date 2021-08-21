@@ -1,4 +1,5 @@
 pub mod term;
+pub mod ui_type;
 
 use anyhow::Result;
 use dnd_gm_helper::{
@@ -13,6 +14,7 @@ use dnd_gm_helper::{
 	stats::StatList,
 	status::{Status, StatusList},
 };
+// TODO: get rid of this
 use tui::{layout::Rect, widgets::Table};
 
 #[derive(Clone)]

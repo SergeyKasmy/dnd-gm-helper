@@ -1,0 +1,149 @@
+use super::{term::Term, EditorMode, Ui};
+
+use anyhow::Result;
+use dnd_gm_helper::{
+	action_enums::{EditorAction, EditorActionViewMode, MainMenuAction, SettingsAction},
+	id::{OrderNum, Uid},
+	list::SetList,
+	player::{Player, Players},
+	side_effect::SideEffect,
+	skill::Skill,
+	stats::StatList,
+	status::{Status, StatusList},
+};
+
+pub enum UiType {
+	TermTui(Term),
+}
+
+impl Ui for UiType {
+	fn draw_menu(
+		&self,
+		items: &[impl AsRef<str>],
+		statusbar_text: impl AsRef<str>,
+	) -> Result<Option<usize>> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.draw_menu(items, statusbar_text),
+		}
+	}
+
+	fn draw_main_menu(&self) -> Result<MainMenuAction> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.draw_main_menu(),
+		}
+	}
+
+	fn draw_settings_menu(&self) -> Result<SettingsAction> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.draw_settings_menu(),
+		}
+	}
+
+	fn draw_game(
+		&self,
+		player: &Player,
+		stat_list: &StatList,
+	) -> Result<dnd_gm_helper::action_enums::GameAction> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.draw_game(player, stat_list),
+		}
+	}
+
+	fn choose_skill(&self, skills: &[Skill]) -> Result<Option<dnd_gm_helper::id::OrderNum>> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.choose_skill(skills),
+		}
+	}
+
+	fn choose_status(&self, status_list: &StatusList) -> Result<Option<Status>> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.choose_status(status_list),
+		}
+	}
+
+	fn get_money_amount(&self) -> Result<i64> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.get_money_amount(),
+		}
+	}
+
+	fn pick_player<'a>(
+		&self,
+		players: &'a Players,
+		ignore: Option<Uid>,
+	) -> Result<Option<&'a Player>> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.pick_player(players, ignore),
+		}
+	}
+
+	fn draw_editor<'a, F>(
+		&self,
+		mode: EditorMode,
+		list_title: Option<impl AsRef<str>>,
+		list_items: &[impl AsRef<str>],
+		details: Option<F>,
+	) -> Result<EditorAction>
+	where
+		// TODO: Use F: Fn(Rect) -> Vec<(Box<dyn Widget>, Rect)>,
+		F: Fn(tui::layout::Rect) -> Vec<(tui::widgets::Table<'a>, tui::layout::Rect)>,
+	{
+		match &self {
+			Self::TermTui(term_tui) => term_tui.draw_editor(mode, list_title, list_items, details),
+		}
+	}
+
+	fn draw_character_menu(
+		&self,
+		players: &dnd_gm_helper::player::Players,
+		stat_list: &dnd_gm_helper::stats::StatList,
+	) -> Result<dnd_gm_helper::action_enums::EditorActionViewMode> {
+		todo!()
+	}
+
+	fn draw_setlist(&self, setlist: &SetList<String>) -> Result<EditorActionViewMode> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.draw_setlist(setlist),
+		}
+	}
+
+	fn edit_player(
+		&self,
+		players: &Players,
+		id: Uid,
+		stat_list: &StatList,
+		status_list: &StatusList,
+	) -> Result<Option<Player>> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.edit_player(players, id, stat_list, status_list),
+		}
+	}
+
+	fn edit_setlist(
+		&self,
+		list: &SetList<String>,
+		item: String,
+		item_ordernum: OrderNum,
+		title: Option<impl AsRef<str>>,
+	) -> Result<String> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.edit_setlist(list, item, item_ordernum, title),
+		}
+	}
+
+	fn edit_side_effect(
+		&self,
+		old_side_effect: Option<SideEffect>,
+		status_list: &StatusList,
+	) -> Result<Option<SideEffect>> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.edit_side_effect(old_side_effect, status_list),
+		}
+	}
+
+	fn reorder_players(&self, old_player_order: &[Uid], players: &mut Players) -> Result<Vec<Uid>> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.reorder_players(old_player_order, players),
+		}
+	}
+}

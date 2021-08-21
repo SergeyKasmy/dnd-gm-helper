@@ -1,5 +1,5 @@
 use crate::ui::term::Term;
-use crate::ui::Ui;
+use crate::ui::{ui_type::UiType, Ui};
 use dnd_gm_helper::list::SetList;
 use dnd_gm_helper::side_effect::{SideEffectAffects, SideEffectType};
 use dnd_gm_helper::{
@@ -36,12 +36,14 @@ macro_rules! get_player_mut {
 }
 
 pub struct Client {
-	ui: Term,
+	ui: UiType,
 }
 
 impl Client {
 	pub fn new() -> Result<Self> {
-		Ok(Client { ui: Term::new()? })
+		Ok(Client {
+			ui: UiType::TermTui(Term::new()?),
+		})
 	}
 
 	pub fn run(&self) -> Result<()> {
