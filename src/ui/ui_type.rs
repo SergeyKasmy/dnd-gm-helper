@@ -95,10 +95,12 @@ impl Ui for UiType {
 
 	fn draw_character_menu(
 		&self,
-		players: &dnd_gm_helper::player::Players,
-		stat_list: &dnd_gm_helper::stats::StatList,
-	) -> Result<dnd_gm_helper::action_enums::EditorActionViewMode> {
-		todo!()
+		players: &Players,
+		stat_list: &StatList,
+	) -> Result<EditorActionViewMode> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.draw_character_menu(players, stat_list),
+		}
 	}
 
 	fn draw_setlist(&self, setlist: &SetList<String>) -> Result<EditorActionViewMode> {
@@ -144,6 +146,35 @@ impl Ui for UiType {
 	fn reorder_players(&self, old_player_order: &[Uid], players: &mut Players) -> Result<Vec<Uid>> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.reorder_players(old_player_order, players),
+		}
+	}
+
+	fn messagebox_with_options(
+		&self,
+		desc: impl AsRef<str>,
+		options: &[impl AsRef<str>],
+		is_vertical: bool,
+	) -> Result<Option<OrderNum>> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.messagebox_with_options(desc, options, is_vertical),
+		}
+	}
+
+	fn messagebox_with_input_field(&self, desc: impl AsRef<str>) -> Result<String> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.messagebox_with_input_field(desc),
+		}
+	}
+
+	fn messagebox_yn(&self, desc: impl AsRef<str>) -> Result<bool> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.messagebox_yn(desc),
+		}
+	}
+
+	fn messagebox(&self, desc: impl AsRef<str>) -> Result<()> {
+		match &self {
+			Self::TermTui(term_tui) => term_tui.messagebox(desc),
 		}
 	}
 }

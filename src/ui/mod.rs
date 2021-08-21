@@ -87,4 +87,13 @@ pub trait Ui {
 	) -> Result<Option<SideEffect>>;
 
 	fn reorder_players(&self, old_player_order: &[Uid], players: &mut Players) -> Result<Vec<Uid>>;
+	fn messagebox_with_options(
+		&self,
+		desc: impl AsRef<str>,
+		options: &[impl AsRef<str>],
+		is_vertical: bool,
+	) -> Result<Option<OrderNum>>;
+	fn messagebox_with_input_field(&self, desc: impl AsRef<str>) -> Result<String>;
+	fn messagebox_yn(&self, desc: impl AsRef<str>) -> Result<bool>;
+	fn messagebox(&self, desc: impl AsRef<str>) -> Result<()>;
 }

@@ -140,11 +140,11 @@ impl Term {
 		)
 	}
 
-	pub fn messagebox_custom<F>(
+	fn messagebox_custom<F>(
 		&self,
 		width: u16,
 		height: u16,
-		desc: &str,
+		desc: impl AsRef<str>,
 		contents: F,
 		// after which widget to place the buffer and with which offset + the buffer itself
 		mut with_buffer: Option<((OrderNum, u16), &mut String)>,
@@ -153,6 +153,7 @@ impl Term {
 		// takes the rect of the window and returns the widgets and their coords
 		F: Fn(Rect) -> Vec<(Box<dyn Widget>, Rect)>,
 	{
+		let desc = desc.as_ref();
 		self.term.borrow_mut().clear()?;
 		loop {
 			self.term.borrow_mut().draw(|frame| {
@@ -200,13 +201,14 @@ impl Term {
 		}
 	}
 
-	pub fn messagebox_with_options_immediate<T: AsRef<str>>(
+	pub fn messagebox_with_options_immediate(
 		&self,
-		desc: &str,
-		options: &[T],
+		desc: impl AsRef<str>,
+		options: &[impl AsRef<str>],
 		selected: Option<OrderNum>,
 		is_vertical: bool,
 	) -> Result<KeyCode> {
+		let desc = desc.as_ref();
 		self.term.borrow_mut().clear()?;
 		if options.is_empty() {
 			panic!("Can't show a dialog with no buttons")
@@ -328,94 +330,6 @@ impl Term {
 				return Ok(key.code);
 			}
 		}
-	}
-
-	pub fn messagebox_with_options<T: AsRef<str>>(
-		&self,
-		desc: &str,
-		options: &[T],
-		is_vertical: bool,
-	) -> Result<Option<OrderNum>> {
-		let mut state = ListState::default();
-		state.select(Some(0));
-		loop {
-			match self.messagebox_with_options_immediate(
-				desc,
-				options,
-				state.selected_onum(),
-				is_vertical,
-			)? {
-				KeyCode::Enter => return Ok(Some(state.selected_onum().unwrap_or(0.into()))),
-				KeyCode::Char(ch) => {
-					if let Some(num) = ch.to_digit(10) {
-						let num: OrderNum = (num as usize - 1).into();
-						if num < options.len().into() {
-							return Ok(Some(num));
-						}
-					}
-				}
-				KeyCode::Esc => return Ok(None),
-				KeyCode::Right if !is_vertical => {
-					state.next(options.len());
-				}
-				KeyCode::Left if !is_vertical => {
-					state.prev(options.len());
-				}
-				KeyCode::Down if is_vertical => {
-					state.next(options.len());
-				}
-				KeyCode::Up if is_vertical => {
-					state.prev(options.len());
-				}
-				_ => (),
-			}
-		}
-	}
-
-	pub fn messagebox_with_input_field(&self, desc: &str) -> Result<String> {
-		self.term.borrow_mut().clear()?;
-		let width = desc.len() as u16 + 4;
-		let height = 7;
-		let mut buffer = String::new();
-
-		loop {
-			self.term.borrow_mut().draw(|frame| {
-				let block_rect = Term::get_centered_box(frame.size(), width, height);
-				let (desc_rect, input_rect) = Term::get_messagebox_text_input_locations(block_rect);
-
-				let block = Block::default().borders(Borders::ALL);
-				let desc = Paragraph::new(desc).alignment(Alignment::Center);
-				let input = Paragraph::new(buffer.as_str());
-				frame.render_widget(block.clone(), block_rect);
-				frame.render_widget(desc, desc_rect);
-				frame.render_widget(input, input_rect);
-			})?;
-
-			if let Event::Key(key) = read_event()? {
-				match key.code {
-					KeyCode::Char(ch) => buffer.push(ch),
-					KeyCode::Backspace => {
-						buffer.pop();
-					}
-					KeyCode::Enter => {
-						return Ok(buffer);
-					}
-					_ => (),
-				}
-			}
-		}
-	}
-
-	pub fn messagebox_yn(&self, desc: &str) -> Result<bool> {
-		Ok(matches!(
-			self.messagebox_with_options(desc, &["Yes", "No"], false)?,
-			Some(OrderNum(0))
-		))
-	}
-
-	pub fn messagebox(&self, desc: impl AsRef<str>) -> Result<()> {
-		self.messagebox_with_options(desc.as_ref(), &["OK"], false)?;
-		Ok(())
 	}
 
 	pub fn player_stats<'a>(
@@ -1750,5 +1664,95 @@ impl Ui for Term {
 		}
 
 		Ok(player_list.into_iter().map(|(id, _)| id).collect())
+	}
+
+	fn messagebox_with_options(
+		&self,
+		desc: impl AsRef<str>,
+		options: &[impl AsRef<str>],
+		is_vertical: bool,
+	) -> Result<Option<OrderNum>> {
+		let desc = desc.as_ref();
+		let mut state = ListState::default();
+		state.select(Some(0));
+		loop {
+			match self.messagebox_with_options_immediate(
+				desc,
+				options,
+				state.selected_onum(),
+				is_vertical,
+			)? {
+				KeyCode::Enter => return Ok(Some(state.selected_onum().unwrap_or(0.into()))),
+				KeyCode::Char(ch) => {
+					if let Some(num) = ch.to_digit(10) {
+						let num: OrderNum = (num as usize - 1).into();
+						if num < options.len().into() {
+							return Ok(Some(num));
+						}
+					}
+				}
+				KeyCode::Esc => return Ok(None),
+				KeyCode::Right if !is_vertical => {
+					state.next(options.len());
+				}
+				KeyCode::Left if !is_vertical => {
+					state.prev(options.len());
+				}
+				KeyCode::Down if is_vertical => {
+					state.next(options.len());
+				}
+				KeyCode::Up if is_vertical => {
+					state.prev(options.len());
+				}
+				_ => (),
+			}
+		}
+	}
+
+	fn messagebox_with_input_field(&self, desc: impl AsRef<str>) -> Result<String> {
+		let desc = desc.as_ref();
+		self.term.borrow_mut().clear()?;
+		let width = desc.len() as u16 + 4;
+		let height = 7;
+		let mut buffer = String::new();
+
+		loop {
+			self.term.borrow_mut().draw(|frame| {
+				let block_rect = Term::get_centered_box(frame.size(), width, height);
+				let (desc_rect, input_rect) = Term::get_messagebox_text_input_locations(block_rect);
+
+				let block = Block::default().borders(Borders::ALL);
+				let desc = Paragraph::new(desc).alignment(Alignment::Center);
+				let input = Paragraph::new(buffer.as_str());
+				frame.render_widget(block.clone(), block_rect);
+				frame.render_widget(desc, desc_rect);
+				frame.render_widget(input, input_rect);
+			})?;
+
+			if let Event::Key(key) = read_event()? {
+				match key.code {
+					KeyCode::Char(ch) => buffer.push(ch),
+					KeyCode::Backspace => {
+						buffer.pop();
+					}
+					KeyCode::Enter => {
+						return Ok(buffer);
+					}
+					_ => (),
+				}
+			}
+		}
+	}
+
+	fn messagebox_yn(&self, desc: impl AsRef<str>) -> Result<bool> {
+		Ok(matches!(
+			self.messagebox_with_options(desc, &["Yes", "No"], false)?,
+			Some(OrderNum(0))
+		))
+	}
+
+	fn messagebox(&self, desc: impl AsRef<str>) -> Result<()> {
+		self.messagebox_with_options(desc.as_ref(), &["OK"], false)?;
+		Ok(())
 	}
 }
