@@ -221,25 +221,21 @@ impl Client {
 										// TODO: avoid cloning
 										let affects = side_effect.affects.clone();
 										let status = status.clone();
-										if let SideEffectAffects::Themselves
-										| SideEffectAffects::Both = affects
-										{
-											self.ui.messagebox(format!(
-												"Applying status {} to the player",
-												status.status_type
-											))?;
+										if let SideEffectAffects::Themselves = affects {
 											get_player_mut!(players, id).add_status(status.clone())
 										}
 										if let SideEffectAffects::SomeoneElse
 										| SideEffectAffects::Both = affects
 										{
-											self.ui.messagebox(format!(
-												"Applying status {} to a different player",
-												status.status_type
-											))?;
+											let skip = match affects {
+												SideEffectAffects::SomeoneElse => Some(id),
+												SideEffectAffects::Both => None,
+												SideEffectAffects::Themselves => unreachable!(),
+											};
+
 											if let Some(target) = self
 												.ui
-												.pick_player(players, Some(id))?
+												.pick_player(players, skip)?
 												.map(|x| x.id.unwrap())
 											{
 												get_player_mut!(players, target)
