@@ -1,6 +1,6 @@
 [package]
 name = "dnd-gm-helper"
-version = "0.2.5"
+version = "0.2.6"
 edition = "2018"
 
 [profile.release]

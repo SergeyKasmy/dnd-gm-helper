@@ -244,36 +244,25 @@ impl Client {
 									}
 									SideEffectType::UsesSkill => {
 										self.ui.messagebox("This skill has an \"Uses skill\" side effect. Choose a player and the skill to use")?;
-										loop {
-											if let Some(target) = self
-												.ui
-												.pick_player(players, Some(id))?
-												.map(|x| x.id.unwrap())
-											{
-												let skill_names = get_player!(players, target)
-													.skills
-													.iter()
-													.map(|x| x.name.as_str())
-													.collect::<Vec<&str>>();
-												if let Some(chosen_skill) =
-													self.ui.messagebox_with_options(
-														"Choose skill",
-														&skill_names,
-														true,
-													)? {
-													if get_player_mut!(players, target).skills
-														[*chosen_skill]
-														.r#use()
-														.is_err()
-													{
-														// FIXME: may get stuck in a loop if all skills
-														// are on cd. Do this somehow else
-														self.ui.messagebox("Skill already on cooldown. Choose a different one")?;
-														continue;
-													} else {
-														break;
-													}
-												}
+										if let Some(target) = self
+											.ui
+											.pick_player(players, Some(id))?
+											.map(|x| x.id.unwrap())
+										{
+											let skill_names = get_player!(players, target)
+												.skills
+												.iter()
+												.map(|x| x.name.as_str())
+												.collect::<Vec<&str>>();
+											if let Some(chosen_skill) =
+												self.ui.messagebox_with_options(
+													"Choose skill",
+													&skill_names,
+													true,
+												)? {
+												get_player_mut!(players, target).skills
+													[*chosen_skill]
+													.use_force();
 											}
 										}
 									}
