@@ -193,7 +193,12 @@ impl Client {
 							match get_player_mut!(players, id).skills.get_mut(*input) {
 								Some(skill) => {
 									if skill.r#use().is_err() {
-										self.ui.messagebox("Skill still on cooldown")?;
+										if self
+											.ui
+											.messagebox_yn("Skill still on cooldown. Continue?")?
+										{
+											skill.use_force();
+										}
 										continue;
 									}
 								}
