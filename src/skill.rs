@@ -23,11 +23,15 @@ impl Skill {
 	pub fn r#use(&mut self) -> Result<(), ()> {
 		if self.cooldown_left == 0 {
 			log::debug!("Using skill {}", self.name);
-			self.cooldown_left = self.cooldown;
+			self.use_force();
 			Ok(())
 		} else {
 			log::info!("Skill {} is still on cooldown", self.name);
 			Err(())
 		}
+	}
+
+	pub fn use_force(&mut self) {
+		self.cooldown_left = self.cooldown;
 	}
 }
