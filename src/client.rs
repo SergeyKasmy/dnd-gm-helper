@@ -198,8 +198,9 @@ impl Client {
 											.messagebox_yn("Skill still on cooldown. Continue?")?
 										{
 											skill.use_force();
+										} else {
+											continue;
 										}
-										continue;
 									}
 								}
 								None => {
