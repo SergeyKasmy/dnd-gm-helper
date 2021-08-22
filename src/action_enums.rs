@@ -1,4 +1,4 @@
-use crate::status::StatusCooldownType;
+use crate::{id::OrderNum, status::StatusCooldownType};
 
 pub enum MainMenuAction {
 	Play,
@@ -38,8 +38,8 @@ pub enum EditorActionViewMode {
 	Next,
 	Prev,
 	Add,
-	Edit,
-	Delete,
+	Edit(OrderNum),
+	Delete(OrderNum),
 	Quit,
 }
 
