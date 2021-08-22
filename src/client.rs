@@ -1,3 +1,4 @@
+use crate::ui::cursive::UiCursive;
 use crate::ui::term::Term;
 use crate::ui::{ui_type::UiType, Ui};
 use dnd_gm_helper::list::SetList;
@@ -42,7 +43,8 @@ pub struct Client {
 impl Client {
 	pub fn new() -> Result<Self> {
 		Ok(Client {
-			ui: UiType::TermTui(Term::new()?),
+			//ui: UiType::TermTui(Term::new()?),
+			ui: UiType::Cursive(UiCursive::new()),
 		})
 	}
 

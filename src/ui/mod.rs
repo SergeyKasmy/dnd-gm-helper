@@ -1,4 +1,5 @@
 pub mod term;
+pub mod cursive;
 pub mod ui_type;
 
 use anyhow::Result;
@@ -14,11 +15,6 @@ use dnd_gm_helper::{
 };
 
 pub trait Ui {
-	fn draw_menu(
-		&self,
-		items: &[impl AsRef<str>],
-		statusbar_text: impl AsRef<str>,
-	) -> Result<Option<usize>>;
 	fn draw_main_menu(&self) -> Result<MainMenuAction>;
 	fn draw_settings_menu(&self) -> Result<SettingsAction>;
 	fn draw_game(&self, player: &Player, stat_list: &StatList) -> Result<GameAction>;

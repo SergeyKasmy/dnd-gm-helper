@@ -740,9 +740,7 @@ impl Term {
 			}
 		}
 	}
-}
 
-impl Ui for Term {
 	fn draw_menu(
 		&self,
 		items: &[impl AsRef<str>],
@@ -815,7 +813,9 @@ impl Ui for Term {
 			}
 		}
 	}
+}
 
+impl Ui for Term {
 	fn draw_main_menu(&self) -> Result<MainMenuAction> {
 		let items = [
 			"Start game",

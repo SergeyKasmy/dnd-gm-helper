@@ -1,4 +1,5 @@
 use super::{term::Term, Ui};
+use crate::ui::cursive::UiCursive;
 
 use anyhow::Result;
 use dnd_gm_helper::{
@@ -14,28 +15,21 @@ use dnd_gm_helper::{
 
 pub enum UiType {
 	TermTui(Term),
+    Cursive(UiCursive)
 }
 
 impl Ui for UiType {
-	fn draw_menu(
-		&self,
-		items: &[impl AsRef<str>],
-		statusbar_text: impl AsRef<str>,
-	) -> Result<Option<usize>> {
-		match &self {
-			Self::TermTui(term_tui) => term_tui.draw_menu(items, statusbar_text),
-		}
-	}
-
 	fn draw_main_menu(&self) -> Result<MainMenuAction> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.draw_main_menu(),
+			Self::Cursive(cursive) => cursive.draw_main_menu(),
 		}
 	}
 
 	fn draw_settings_menu(&self) -> Result<SettingsAction> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.draw_settings_menu(),
+			Self::Cursive(cursive) => cursive.draw_settings_menu(),
 		}
 	}
 
@@ -46,24 +40,28 @@ impl Ui for UiType {
 	) -> Result<dnd_gm_helper::action_enums::GameAction> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.draw_game(player, stat_list),
+			Self::Cursive(cursive) => cursive.draw_game(player, stat_list),
 		}
 	}
 
 	fn choose_skill(&self, skills: &[Skill]) -> Result<Option<dnd_gm_helper::id::OrderNum>> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.choose_skill(skills),
+			Self::Cursive(cursive) => cursive.choose_skill(skills),
 		}
 	}
 
 	fn choose_status(&self, status_list: &StatusList) -> Result<Option<Status>> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.choose_status(status_list),
+			Self::Cursive(cursive) => cursive.choose_status(status_list),
 		}
 	}
 
 	fn get_money_amount(&self) -> Result<i64> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.get_money_amount(),
+			Self::Cursive(cursive) => cursive.get_money_amount(),
 		}
 	}
 
@@ -74,6 +72,7 @@ impl Ui for UiType {
 	) -> Result<Option<&'a Player>> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.pick_player(players, ignore),
+			Self::Cursive(cursive) => cursive.pick_player(players, ignore),
 		}
 	}
 
@@ -84,12 +83,14 @@ impl Ui for UiType {
 	) -> Result<EditorActionViewMode> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.draw_character_menu(players, stat_list),
+			Self::Cursive(cursive) => cursive.draw_character_menu(players, stat_list),
 		}
 	}
 
 	fn draw_setlist(&self, setlist: &SetList<String>) -> Result<EditorActionViewMode> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.draw_setlist(setlist),
+			Self::Cursive(cursive) => cursive.draw_setlist(setlist),
 		}
 	}
 
@@ -102,6 +103,7 @@ impl Ui for UiType {
 	) -> Result<Option<Player>> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.edit_player(players, id, stat_list, status_list),
+			Self::Cursive(cursive) => cursive.edit_player(players, id, stat_list, status_list),
 		}
 	}
 
@@ -114,6 +116,7 @@ impl Ui for UiType {
 	) -> Result<String> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.edit_setlist(list, item, item_ordernum, title),
+			Self::Cursive(cursive) => cursive.edit_setlist(list, item, item_ordernum, title),
 		}
 	}
 
@@ -124,12 +127,14 @@ impl Ui for UiType {
 	) -> Result<Option<SideEffect>> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.edit_side_effect(old_side_effect, status_list),
+			Self::Cursive(cursive) => cursive.edit_side_effect(old_side_effect, status_list),
 		}
 	}
 
 	fn reorder_players(&self, old_player_order: &[Uid], players: &mut Players) -> Result<Vec<Uid>> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.reorder_players(old_player_order, players),
+			Self::Cursive(cursive) => cursive.reorder_players(old_player_order, players),
 		}
 	}
 
@@ -141,24 +146,28 @@ impl Ui for UiType {
 	) -> Result<Option<OrderNum>> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.messagebox_with_options(desc, options, is_vertical),
+			Self::Cursive(cursive) => cursive.messagebox_with_options(desc, options, is_vertical),
 		}
 	}
 
 	fn messagebox_with_input_field(&self, desc: impl AsRef<str>) -> Result<String> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.messagebox_with_input_field(desc),
+			Self::Cursive(cursive) => cursive.messagebox_with_input_field(desc),
 		}
 	}
 
 	fn messagebox_yn(&self, desc: impl AsRef<str>) -> Result<bool> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.messagebox_yn(desc),
+			Self::Cursive(cursive) => cursive.messagebox_yn(desc),
 		}
 	}
 
 	fn messagebox(&self, desc: impl AsRef<str>) -> Result<()> {
 		match &self {
 			Self::TermTui(term_tui) => term_tui.messagebox(desc),
+			Self::Cursive(cursive) => cursive.messagebox(desc),
 		}
 	}
 }
